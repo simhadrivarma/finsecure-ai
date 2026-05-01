@@ -1,16 +1,10 @@
-const express = require("express");
-const app = express();
+const app = require("./app");
+const connectDB = require("./config/db");
 
-const authRoutes = require("./routes/auth.routes");
+const PORT = 5000;
 
-app.use(express.json());
+connectDB();
 
-app.use("/api/auth", authRoutes);
-
-app.get("/", (req:any,res:any)=>{
- res.send("FinSecure AI Backend Running 🚀");
-});
-
-app.listen(5000,()=>{
- console.log("Server running on port 5000");
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
