@@ -1,0 +1,40 @@
+import { Employee } from "../types/Employee";
+
+export const employees: Employee[] = [
+  {
+    id: "EMP001",
+    name: "Ramesh Kumar",
+    role: "Branch Manager",
+    email: "ramesh@finsecure.ai",
+    phone: "+91 98765 43210",
+    joiningDate: "12 Jan 2021",
+    branch: "Hyderabad Main Branch",
+    ifsc: "FINS0001001",
+    customers: 156,
+    status: "Active",
+  },
+  {
+    id: "EMP002",
+    name: "Priya Sharma",
+    role: "Loan Officer",
+    email: "priya@finsecure.ai",
+    phone: "+91 91234 56780",
+    joiningDate: "24 Jun 2022",
+    branch: "Vizag Branch",
+    ifsc: "FINS0001002",
+    customers: 94,
+    status: "Active",
+  },
+  {
+    id: "EMP003",
+    name: "Arjun Rao",
+    role: "Customer Support Executive",
+    email: "arjun@finsecure.ai",
+    phone: "+91 99887 76655",
+    joiningDate: "02 Mar 2023",
+    branch: "Vijayawada Branch",
+    ifsc: "FINS0001003",
+    customers: 121,
+    status: "Inactive",
+  },
+];

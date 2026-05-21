@@ -1,18 +1,16 @@
 const Transaction = require("../models/transaction.model");
 
-exports.getDashboard = async (req: any, res: any) => {
+const getDashboard = async (req: any, res: any) => {
   try {
-    const userId = req.user.id;
+    const transactions = await Transaction.find({ user: req.user.id });
 
-    const transactions = await Transaction.find({ userId });
+    const totalIncome = transactions
+      .filter((t: any) => t.type === "income")
+      .reduce((sum: number, t: any) => sum + t.amount, 0);
 
-    let totalIncome = 0;
-    let totalExpense = 0;
-
-    transactions.forEach((t: any) => {
-      if (t.type === "income") totalIncome += t.amount;
-      else totalExpense += t.amount;
-    });
+    const totalExpense = transactions
+      .filter((t: any) => t.type === "expense")
+      .reduce((sum: number, t: any) => sum + t.amount, 0);
 
     const balance = totalIncome - totalExpense;
 
@@ -21,7 +19,9 @@ exports.getDashboard = async (req: any, res: any) => {
       totalExpense,
       balance,
     });
-  } catch (error) {
-    res.status(500).json({ message: "Server Error" });
+  } catch {
+    res.status(500).json({ message: "Error loading dashboard" });
   }
 };
+
+module.exports = { getDashboard };

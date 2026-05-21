@@ -1,38 +1,50 @@
 const Transaction = require("../models/transaction.model");
 
-// ➕ Add Transaction
-exports.addTransaction = async (req: any, res: any) => {
+const getTransactions = async (req: any, res: any) => {
+  try {
+    const transactions = await Transaction.find({
+      user: req.user.id,
+    }).sort({ createdAt: -1 });
+
+    res.json(transactions);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching transactions" });
+  }
+};
+
+const addTransaction = async (req: any, res: any) => {
   try {
     const { amount, type, category, description } = req.body;
 
-    const transaction = new Transaction({
-      userId: req.user.id, // from JWT middleware
+    const transaction = await Transaction.create({
+      user: req.user.id,
       amount,
       type,
       category,
       description,
     });
 
-    await transaction.save();
-
-    res.status(201).json({
-      message: "Transaction added",
-      transaction,
-    });
+    res.status(201).json(transaction);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Error adding transaction" });
   }
 };
 
-// 📥 Get Transactions
-exports.getTransactions = async (req: any, res: any) => {
+const deleteTransaction = async (req: any, res: any) => {
   try {
-    const transactions = await Transaction.find({
-      userId: req.user.id,
-    }).sort({ createdAt: -1 });
+    await Transaction.findOneAndDelete({
+      _id: req.params.id,
+      user: req.user.id,
+    });
 
-    res.json(transactions);
+    res.json({ message: "Transaction deleted" });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Error deleting transaction" });
   }
+};
+
+module.exports = {
+  getTransactions,
+  addTransaction,
+  deleteTransaction,
 };

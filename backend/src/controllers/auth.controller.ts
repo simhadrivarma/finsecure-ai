@@ -1,12 +1,13 @@
+const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const User = require("../models/user.model");
 
-exports.register = async (req: any, res: any) => {
+const register = async (req: any, res: any) => {
   try {
     const { name, email, password, role } = req.body;
 
     const existingUser = await User.findOne({ email });
+
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
@@ -17,7 +18,7 @@ exports.register = async (req: any, res: any) => {
       name,
       email,
       password: hashedPassword,
-      role,
+      role: role || "customer",
     });
 
     res.status(201).json({
@@ -25,11 +26,11 @@ exports.register = async (req: any, res: any) => {
       user,
     });
   } catch (error) {
-    res.status(500).json({ message: "Server Error" });
+    res.status(500).json({ message: "Server error" });
   }
 };
 
-exports.login = async (req: any, res: any) => {
+const login = async (req: any, res: any) => {
   try {
     const { email, password } = req.body;
 
@@ -39,23 +40,40 @@ exports.login = async (req: any, res: any) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const validPassword = await bcrypt.compare(password, user.password);
+    const isMatch = await bcrypt.compare(password, user.password);
 
-    if (!validPassword) {
+    if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      {
+        id: user._id,
+        role: user.role,
+      },
       "secretkey",
-      { expiresIn: "1h" }
+      { expiresIn: "1d" }
     );
 
     res.json({
-      message: "Login successful",
-      token,
-    });
+  message: "Login successful",
+  token,
+  user: {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    phone: user.phone || "",
+    aadhaarNumber: user.aadhaarNumber || "",
+    panNumber: user.panNumber || "",
+  },
+});
   } catch (error) {
-    res.status(500).json({ message: "Server Error" });
+    res.status(500).json({ message: "Server error" });
   }
+};
+
+module.exports = {
+  register,
+  login,
 };
