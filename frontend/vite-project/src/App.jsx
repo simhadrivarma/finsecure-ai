@@ -1301,6 +1301,155 @@ function PasswordModal({ onClose, onSave }) {
     </div>
   );
 }
+function EntityTable(props) {
+  const {
+    config = {},
+    loading = false,
+    onView,
+    onEdit,
+    onDelete,
+  } = props;
+
+  const tableData =
+    Array.isArray(props.data)
+      ? props.data
+      : Array.isArray(props.rows)
+      ? props.rows
+      : Array.isArray(props.items)
+      ? props.items
+      : [];
+
+  const columns = Array.isArray(config.columns) ? config.columns : [];
+  const title = config.title || "Records";
+
+  const getCellValue = (item, key) => {
+    const value = item?.[key];
+
+    if (value === undefined || value === null || value === "") {
+      return "-";
+    }
+
+    if (Array.isArray(value)) {
+      return value.length ? value.join(", ") : "-";
+    }
+
+    return String(value);
+  };
+
+  const shouldShowBadge = (key) => {
+    return ["status", "kyc", "risk"].includes(String(key).toLowerCase());
+  };
+
+  const renderCell = (item, key) => {
+    const value = getCellValue(item, key);
+
+    if (shouldShowBadge(key) && value !== "-" && typeof Badge === "function") {
+      return <Badge value={value} />;
+    }
+
+    return <span className="table-cell-text">{value}</span>;
+  };
+
+  if (loading) {
+    return (
+      <div className="table-shell polished-table-shell">
+        <div className="table-loading-state">
+          <div className="loader-orb"></div>
+          <h3>Loading {title}</h3>
+          <p>Please wait while FinSecure AI fetches secure banking records.</p>
+
+          <div className="skeleton-table">
+            {[1, 2, 3, 4].map((row) => (
+              <div className="skeleton-row" key={row}>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="table-shell polished-table-shell">
+      <div className="table-scroll">
+        <table className="data-table polished-data-table">
+          <thead>
+            <tr>
+              {columns.map(([key, label]) => (
+                <th key={key}>{label}</th>
+              ))}
+
+              <th className="actions-head">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {tableData.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length + 1}>
+                  <div className="empty-state-box">
+                    <div className="empty-state-icon">🏦</div>
+                    <h3>No {title} Found</h3>
+                    <p>
+                      There are no records available right now. Add a new record
+                      or clear filters to view banking data.
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              tableData.map((item, index) => (
+                <tr key={item.id || item._id || index}>
+                  {columns.map(([key]) => (
+                    <td key={key}>{renderCell(item, key)}</td>
+                  ))}
+
+                  <td>
+                    <div className="table-actions">
+                      {onView && (
+                        <button
+                          type="button"
+                          className="action-btn view-action"
+                          onClick={() => onView(item)}
+                        >
+                          View
+                        </button>
+                      )}
+
+                      {onEdit && (
+                        <button
+                          type="button"
+                          className="action-btn edit-action"
+                          onClick={() => onEdit(item)}
+                        >
+                          Edit
+                        </button>
+                      )}
+
+                      {onDelete && (
+                        <button
+                          type="button"
+                          className="action-btn delete-action"
+                          onClick={() => onDelete(item)}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 function EntityPage({
   config,
@@ -3387,5 +3536,757 @@ th {
   .form-grid {
     grid-template-columns: 1fr;
   }
+}
+  .polished-table-shell {
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid #dbe4f0;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+.dark .polished-table-shell {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.polished-data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.polished-data-table th {
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.dark .polished-data-table th {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5e7eb;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.polished-data-table td {
+  padding: 16px;
+  border-bottom: 1px solid #edf2f7;
+  color: #0f172a;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.dark .polished-data-table td {
+  color: #f8fafc;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.polished-data-table tbody tr {
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.polished-data-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.dark .polished-data-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.table-cell-text {
+  font-weight: 650;
+}
+
+.actions-head {
+  text-align: center !important;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.action-btn {
+  border: 0;
+  outline: none;
+  cursor: pointer;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-weight: 900;
+  font-size: 13px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.action-btn:hover {
+  transform: translateY(-1px);
+}
+
+.view-action {
+  background: #f1f5f9;
+  color: #020617;
+}
+
+.edit-action {
+  background: #eef6ff;
+  color: #075985;
+}
+
+.delete-action {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.dark .view-action {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.dark .edit-action {
+  background: rgba(56, 189, 248, 0.18);
+  color: #7dd3fc;
+}
+
+.dark .delete-action {
+  background: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+}
+
+.empty-state-box {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 42px 20px;
+}
+
+.empty-state-icon {
+  width: 70px;
+  height: 70px;
+  border-radius: 24px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 14px;
+  font-size: 32px;
+  background: linear-gradient(135deg, #2563eb, #06b6d4);
+  box-shadow: 0 16px 30px rgba(37, 99, 235, 0.25);
+}
+
+.empty-state-box h3 {
+  margin: 0;
+  font-size: 22px;
+  color: #0f172a;
+}
+
+.empty-state-box p {
+  max-width: 520px;
+  margin: 8px auto 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.dark .empty-state-box h3 {
+  color: #f8fafc;
+}
+
+.dark .empty-state-box p {
+  color: #cbd5e1;
+}
+
+.table-loading-state {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 36px 20px;
+}
+
+.loader-orb {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 6px solid #dbeafe;
+  border-top-color: #2563eb;
+  animation: spinLoader 1s linear infinite;
+  margin-bottom: 14px;
+}
+
+.table-loading-state h3 {
+  margin: 0;
+  font-size: 22px;
+  color: #0f172a;
+}
+
+.table-loading-state p {
+  margin: 8px 0 18px;
+  color: #64748b;
+}
+
+.dark .table-loading-state h3 {
+  color: #f8fafc;
+}
+
+.dark .table-loading-state p {
+  color: #cbd5e1;
+}
+
+.skeleton-table {
+  width: min(720px, 100%);
+  display: grid;
+  gap: 10px;
+}
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 0.8fr 0.7fr;
+  gap: 12px;
+}
+
+.skeleton-row span {
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e2e8f0, #f8fafc, #e2e8f0);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+.dark .skeleton-row span {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.18),
+    rgba(255, 255, 255, 0.08)
+  );
+  background-size: 200% 100%;
+}
+
+@keyframes spinLoader {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 800px) {
+  .table-actions {
+    justify-content: flex-start;
+  }
+
+  .action-btn {
+    padding: 9px 12px;
+    font-size: 12px;
+  }
+}
+  /* ================================
+   PREMIUM DASHBOARD POLISH
+================================ */
+
+.dashboard-page,
+.page-content {
+  animation: pageFadeIn 0.35s ease;
+}
+
+.dashboard-hero,
+.dashboard-header,
+.page-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  padding: 28px;
+  margin-bottom: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.22), transparent 34%),
+    radial-gradient(circle at top right, rgba(6, 182, 212, 0.18), transparent 32%),
+    linear-gradient(135deg, #071630 0%, #102653 48%, #07111f 100%);
+  color: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.dashboard-hero::before,
+.dashboard-header::before,
+.page-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.08), transparent),
+    radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.14), transparent 14%);
+  pointer-events: none;
+}
+
+.dashboard-hero h1,
+.dashboard-header h1,
+.page-hero h1 {
+  position: relative;
+  font-size: clamp(30px, 4vw, 48px);
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  margin: 0 0 8px;
+  color: #ffffff;
+}
+
+.dashboard-hero p,
+.dashboard-header p,
+.page-hero p {
+  position: relative;
+  max-width: 760px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.stats-grid,
+.dashboard-grid,
+.summary-grid,
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.stat-card,
+.dashboard-card,
+.summary-card,
+.kpi-card,
+.metric-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 26px;
+  padding: 22px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.92));
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    border-color 0.22s ease;
+}
+
+.stat-card::before,
+.dashboard-card::before,
+.summary-card::before,
+.kpi-card::before,
+.metric-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.12), transparent 38%),
+    linear-gradient(135deg, rgba(6, 182, 212, 0.08), transparent 42%);
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.stat-card:hover,
+.dashboard-card:hover,
+.summary-card:hover,
+.kpi-card:hover,
+.metric-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 26px 56px rgba(15, 23, 42, 0.14);
+  border-color: rgba(37, 99, 235, 0.28);
+}
+
+.stat-card:hover::before,
+.dashboard-card:hover::before,
+.summary-card:hover::before,
+.kpi-card:hover::before,
+.metric-card:hover::before {
+  opacity: 1;
+}
+
+.stat-icon,
+.card-icon,
+.metric-icon,
+.kpi-icon {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 16px;
+  font-size: 24px;
+  background: linear-gradient(135deg, #2563eb, #06b6d4);
+  color: #ffffff;
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.28);
+}
+
+.stat-card h3,
+.dashboard-card h3,
+.summary-card h3,
+.kpi-card h3,
+.metric-card h3 {
+  position: relative;
+  margin: 0 0 6px;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.stat-card .value,
+.dashboard-card .value,
+.summary-card .value,
+.kpi-card .value,
+.metric-card .value,
+.stat-value,
+.card-value,
+.metric-value,
+.kpi-value {
+  position: relative;
+  color: #020617;
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin-top: 8px;
+}
+
+.stat-card p,
+.dashboard-card p,
+.summary-card p,
+.kpi-card p,
+.metric-card p,
+.stat-subtitle,
+.card-subtitle,
+.metric-subtitle {
+  position: relative;
+  color: #64748b;
+  font-size: 14px;
+  margin: 10px 0 0;
+  line-height: 1.55;
+}
+
+.dashboard-section,
+.chart-card,
+.insight-card,
+.recent-card,
+.activity-card {
+  border-radius: 28px;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #dbe4f0;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  margin-bottom: 22px;
+}
+
+.dashboard-section h2,
+.chart-card h2,
+.insight-card h2,
+.recent-card h2,
+.activity-card h2 {
+  margin: 0 0 14px;
+  font-size: 22px;
+  font-weight: 950;
+  color: #0f172a;
+  letter-spacing: -0.03em;
+}
+
+.dashboard-mini-badge,
+.trend-badge,
+.growth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+/* Dark mode dashboard polish */
+
+.dark .dashboard-hero,
+.dark .dashboard-header,
+.dark .page-hero {
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.25), transparent 35%),
+    radial-gradient(circle at top right, rgba(34, 211, 238, 0.18), transparent 34%),
+    linear-gradient(135deg, #020617 0%, #0f172a 54%, #111827 100%);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
+}
+
+.dark .stat-card,
+.dark .dashboard-card,
+.dark .summary-card,
+.dark .kpi-card,
+.dark .metric-card {
+  background:
+    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.86));
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.32);
+}
+
+.dark .stat-card h3,
+.dark .dashboard-card h3,
+.dark .summary-card h3,
+.dark .kpi-card h3,
+.dark .metric-card h3 {
+  color: #cbd5e1;
+}
+
+.dark .stat-card .value,
+.dark .dashboard-card .value,
+.dark .summary-card .value,
+.dark .kpi-card .value,
+.dark .metric-card .value,
+.dark .stat-value,
+.dark .card-value,
+.dark .metric-value,
+.dark .kpi-value {
+  color: #ffffff;
+}
+
+.dark .stat-card p,
+.dark .dashboard-card p,
+.dark .summary-card p,
+.dark .kpi-card p,
+.dark .metric-card p,
+.dark .stat-subtitle,
+.dark .card-subtitle,
+.dark .metric-subtitle {
+  color: #94a3b8;
+}
+
+.dark .dashboard-section,
+.dark .chart-card,
+.dark .insight-card,
+.dark .recent-card,
+.dark .activity-card {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.34);
+}
+
+.dark .dashboard-section h2,
+.dark .chart-card h2,
+.dark .insight-card h2,
+.dark .recent-card h2,
+.dark .activity-card h2 {
+  color: #f8fafc;
+}
+
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+  /* ================================
+   REPORTS + FINAL PAGE POLISH
+================================ */
+
+.page-header {
+  position: relative;
+  overflow: hidden;
+  border-radius: 26px;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.14), transparent 32%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
+  border: 1px solid rgba(203, 213, 225, 0.85);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.page-header h1 {
+  font-size: clamp(28px, 3vw, 40px);
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  color: #020617;
+}
+
+.page-header p {
+  color: #64748b;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.filter-card {
+  border-radius: 24px;
+  padding: 20px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.07);
+}
+
+.filter-header h3 {
+  font-size: 20px;
+  font-weight: 950;
+  color: #0f172a;
+  letter-spacing: -0.03em;
+}
+
+.filter-header p {
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.filter-grid label {
+  font-weight: 850;
+  color: #334155;
+}
+
+.filter-grid select,
+.form-grid input,
+.form-grid select,
+.single-form input {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.filter-grid select:focus,
+.form-grid input:focus,
+.form-grid select:focus,
+.single-form input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+.filter-result {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-weight: 700;
+}
+
+.primary-btn,
+.secondary-btn,
+.danger-main-btn,
+.top-logout {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.primary-btn:hover,
+.secondary-btn:hover,
+.danger-main-btn:hover,
+.top-logout:hover {
+  transform: translateY(-1px);
+}
+
+.primary-btn {
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
+}
+
+.secondary-btn:hover {
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+}
+
+.table-card {
+  border-radius: 26px;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+}
+
+.modal {
+  box-shadow: 0 30px 90px rgba(2, 6, 23, 0.38);
+}
+
+.modal-top {
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-top h2 {
+  font-size: 26px;
+  font-weight: 950;
+  letter-spacing: -0.035em;
+}
+
+.modal-top p {
+  margin-top: 6px;
+  color: #64748b;
+}
+
+.close-btn {
+  background: #f1f5f9;
+  color: #0f172a;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.close-btn:hover {
+  transform: rotate(90deg);
+  background: #e2e8f0;
+}
+
+/* Dark mode final polish */
+
+.dark .page-header,
+.dark .filter-card {
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.9));
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
+}
+
+.dark .page-header h1,
+.dark .filter-header h3 {
+  color: #f8fafc;
+}
+
+.dark .page-header p,
+.dark .filter-header p {
+  color: #cbd5e1;
+}
+
+.dark .filter-grid label {
+  color: #e5e7eb;
+}
+
+.dark .filter-result {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+}
+
+.dark .modal-top {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .modal-top p {
+  color: #cbd5e1;
+}
+
+.dark .close-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.dark .close-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
 }
 `;
