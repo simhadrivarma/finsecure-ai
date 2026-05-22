@@ -8,13 +8,11 @@ const adminSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
-
     name: {
       type: String,
       required: true,
       trim: true,
     },
-
     email: {
       type: String,
       required: true,
@@ -22,30 +20,18 @@ const adminSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
-
     password: {
       type: String,
       required: true,
-      select: false,
     },
-
     role: {
       type: String,
-      required: true,
-      enum: [
-        "Super Admin",
-        "Branch Manager",
-        "Loan Officer",
-        "Fraud Analyst",
-        "Customer Support",
-        "Report Analyst",
-      ],
-      default: "Super Admin",
+      default: "Admin",
+      trim: true,
     },
-
     status: {
       type: String,
-      enum: ["Active", "Inactive"],
+      enum: ["Active", "Inactive", "Suspended"],
       default: "Active",
     },
   },
