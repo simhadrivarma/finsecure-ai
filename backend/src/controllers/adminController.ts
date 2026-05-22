@@ -1,5 +1,6 @@
 const bcrypt = require("bcryptjs");
 const Admin = require("../models/Admin");
+const createAuditLog = require("../utils/createAuditLog");
 
 const getAdmins = async (req: any, res: any) => {
   try {
@@ -62,6 +63,16 @@ const createAdmin = async (req: any, res: any) => {
       status: status || "Active",
     });
 
+    await createAuditLog({
+      req,
+      action: "ADMIN_CREATED",
+      module: "Admins",
+      description: `${req.admin.name} created admin ${admin.name}`,
+      targetId: admin.id,
+      targetName: admin.name,
+      status: "Success",
+    });
+
     return res.status(201).json({
       success: true,
       message: "Admin created successfully",
@@ -74,6 +85,14 @@ const createAdmin = async (req: any, res: any) => {
       },
     });
   } catch (error: any) {
+    await createAuditLog({
+      req,
+      action: "ADMIN_CREATE_FAILED",
+      module: "Admins",
+      description: `Admin creation failed: ${error.message}`,
+      status: "Failed",
+    });
+
     return res.status(500).json({
       success: false,
       message: "Failed to create admin",
@@ -128,6 +147,16 @@ const updateAdmin = async (req: any, res: any) => {
 
     await admin.save();
 
+    await createAuditLog({
+      req,
+      action: "ADMIN_UPDATED",
+      module: "Admins",
+      description: `${req.admin.name} updated admin ${admin.name}`,
+      targetId: admin.id,
+      targetName: admin.name,
+      status: "Success",
+    });
+
     return res.status(200).json({
       success: true,
       message: "Admin updated successfully",
@@ -140,6 +169,15 @@ const updateAdmin = async (req: any, res: any) => {
       },
     });
   } catch (error: any) {
+    await createAuditLog({
+      req,
+      action: "ADMIN_UPDATE_FAILED",
+      module: "Admins",
+      description: `Admin update failed: ${error.message}`,
+      targetId: req.params.id,
+      status: "Failed",
+    });
+
     return res.status(500).json({
       success: false,
       message: "Failed to update admin",
@@ -168,6 +206,16 @@ const deleteAdmin = async (req: any, res: any) => {
       });
     }
 
+    await createAuditLog({
+      req,
+      action: "ADMIN_DELETED",
+      module: "Admins",
+      description: `${req.admin.name} deleted admin ${admin.name}`,
+      targetId: admin.id,
+      targetName: admin.name,
+      status: "Success",
+    });
+
     return res.status(200).json({
       success: true,
       message: "Admin deleted successfully",
@@ -180,6 +228,15 @@ const deleteAdmin = async (req: any, res: any) => {
       },
     });
   } catch (error: any) {
+    await createAuditLog({
+      req,
+      action: "ADMIN_DELETE_FAILED",
+      module: "Admins",
+      description: `Admin delete failed: ${error.message}`,
+      targetId: req.params.id,
+      status: "Failed",
+    });
+
     return res.status(500).json({
       success: false,
       message: "Failed to delete admin",

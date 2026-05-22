@@ -1,45 +1,63 @@
-# FinSecure AI Backend 🚀
+# FinSecure AI Banking System
 
-A secure backend system built using Node.js, Express, and TypeScript with authentication and role-based access.
+FinSecure AI is a full-stack banking management system built with React, Express, TypeScript, MongoDB, and AI-based transaction risk scoring.
 
-## 🚀 Features
-- User Registration
-- Login with JWT Authentication
-- Protected Routes
-- Role-based Authorization
-- Password hashing using bcrypt
+## Features
 
-## 🛠 Tech Stack
+- Admin login system
+- Role-based access control
+- Admin management
+- Employee management
+- Branch management
+- Customer management
+- Loan management
+- Transaction management
+- AI risk scoring for suspicious transactions
+- Audit logs
+- Reports
+- Dashboard analytics
+- Dark mode and light mode
+- Font size settings
+- Export Excel / CSV
+- Export PDF
+- Backend validation for all major modules
+- Professional banking UI polish
+
+## Tech Stack
+
+### Frontend
+- React
+- Vite
+- JavaScript / JSX
+- CSS
+
+### Backend
 - Node.js
-- Express
+- Express.js
 - TypeScript
-- JWT (Authentication)
-- bcrypt (Security)
+- MongoDB
+- Mongoose
+- JWT Authentication
 
-## 📂 Project Structure
-backend/
- ├── src/
- │    ├── controllers/
- │    ├── middleware/
- │    ├── routes/
- │    ├── app.ts
- │    └── server.ts
- ├── package.json
+## Project Structure
 
-## 🔗 API Endpoints
-
-### Register
-POST /api/auth/register
-
-### Login
-POST /api/auth/login
-
-### Profile (Protected)
-GET /api/auth/profile
-
-## ▶️ Run Locally
-
-```bash
-cd backend
-npm install
-npm run dev
+```txt
+finsecure-ai/
+├── backend/
+│   ├── src/
+│   │   ├── models/
+│   │   ├── routes/
+│   │   ├── middleware/
+│   │   └── server.ts
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── .env.example
+│
+├── frontend/
+│   └── vite-project/
+│       ├── src/
+│       │   └── App.jsx
+│       └── package.json
+│
+├── README.md
+└── .gitignore

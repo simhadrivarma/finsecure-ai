@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const Admin = require("../models/Admin");
 const protectAdmin = require("../middleware/authMiddleware");
+const createAuditLog = require("../utils/createAuditLog");
 
 const router = express.Router();
 
@@ -97,19 +98,40 @@ router.post("/login", async (req: any, res: any) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
+      await createAuditLog({
+        req,
+        action: "LOGIN_FAILED",
+        module: "Auth",
+        description: "Login failed because email or password was missing",
+        targetName: email || "",
+        status: "Failed",
+      });
+
       return res.status(400).json({
         success: false,
         message: "Email and password are required",
       });
     }
 
+    const normalizedEmail = String(email).toLowerCase().trim();
+
     const admin = await Admin.findOne({
-      email: String(email).toLowerCase().trim(),
+      email: normalizedEmail,
     })
       .select("+password")
       .lean();
 
     if (!admin) {
+      await createAuditLog({
+        req,
+        admin: { email: normalizedEmail },
+        action: "LOGIN_FAILED",
+        module: "Auth",
+        description: `Login failed. Admin not found for ${normalizedEmail}`,
+        targetName: normalizedEmail,
+        status: "Failed",
+      });
+
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
@@ -117,6 +139,17 @@ router.post("/login", async (req: any, res: any) => {
     }
 
     if (admin.status !== "Active") {
+      await createAuditLog({
+        req,
+        admin,
+        action: "LOGIN_FAILED",
+        module: "Auth",
+        description: `${admin.name} tried to login but account is inactive`,
+        targetId: admin.id,
+        targetName: admin.name,
+        status: "Failed",
+      });
+
       return res.status(403).json({
         success: false,
         message: "Admin account is inactive",
@@ -126,6 +159,17 @@ router.post("/login", async (req: any, res: any) => {
     const isPasswordCorrect = await bcrypt.compare(password, admin.password);
 
     if (!isPasswordCorrect) {
+      await createAuditLog({
+        req,
+        admin,
+        action: "LOGIN_FAILED",
+        module: "Auth",
+        description: `${admin.name} entered wrong password`,
+        targetId: admin.id,
+        targetName: admin.name,
+        status: "Failed",
+      });
+
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
@@ -133,6 +177,17 @@ router.post("/login", async (req: any, res: any) => {
     }
 
     const token = createToken(admin);
+
+    await createAuditLog({
+      req,
+      admin,
+      action: "LOGIN_SUCCESS",
+      module: "Auth",
+      description: `${admin.name} logged in successfully`,
+      targetId: admin.id,
+      targetName: admin.name,
+      status: "Success",
+    });
 
     return res.status(200).json({
       success: true,
@@ -211,6 +266,17 @@ router.put("/profile", protectAdmin, async (req: any, res: any) => {
 
     const token = createToken(updatedAdmin);
 
+    await createAuditLog({
+      req,
+      admin: updatedAdmin,
+      action: "PROFILE_UPDATED",
+      module: "Auth",
+      description: `${updatedAdmin.name} updated profile details`,
+      targetId: updatedAdmin.id,
+      targetName: updatedAdmin.name,
+      status: "Success",
+    });
+
     return res.status(200).json({
       success: true,
       message: "Profile updated successfully",
@@ -259,6 +325,17 @@ router.put("/change-password", protectAdmin, async (req: any, res: any) => {
     );
 
     if (!isPasswordCorrect) {
+      await createAuditLog({
+        req,
+        admin: req.admin,
+        action: "PASSWORD_CHANGE_FAILED",
+        module: "Auth",
+        description: `${req.admin.name} entered wrong current password`,
+        targetId: req.admin.id,
+        targetName: req.admin.name,
+        status: "Failed",
+      });
+
       return res.status(401).json({
         success: false,
         message: "Current password is incorrect",
@@ -266,8 +343,18 @@ router.put("/change-password", protectAdmin, async (req: any, res: any) => {
     }
 
     admin.password = await bcrypt.hash(newPassword, 10);
-
     await admin.save();
+
+    await createAuditLog({
+      req,
+      admin: req.admin,
+      action: "PASSWORD_CHANGED",
+      module: "Auth",
+      description: `${req.admin.name} changed account password`,
+      targetId: req.admin.id,
+      targetName: req.admin.name,
+      status: "Success",
+    });
 
     return res.status(200).json({
       success: true,

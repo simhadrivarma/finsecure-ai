@@ -1,151 +1,187 @@
-// @ts-nocheck
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-
-const User = require("../models/User");
+const Admin = require("../models/Admin");
+const protectAdmin = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-const createToken = (user) => {
+const createToken = (admin: any) => {
   return jwt.sign(
     {
-      id: user._id,
-      role: user.role,
+      id: admin.id,
+      email: admin.email,
+      role: admin.role,
     },
-    process.env.JWT_SECRET || "secret",
+    process.env.JWT_SECRET || "finsecure_ai_default_secret",
     {
       expiresIn: "7d",
     }
   );
 };
 
-const cleanUser = (user) => {
-  return {
-    id: user._id,
-    name: user.name || "",
-    email: user.email || "",
-    role: user.role || "customer",
-    phone: user.phone || "",
-    aadhaarNumber: user.aadhaarNumber || "",
-    panNumber: user.panNumber || "",
-  };
+const defaultAdmins = [
+  {
+    id: "ADM001",
+    name: "FinSecure Super Admin",
+    email: "admin@finsecure.ai",
+    password: "admin123",
+    role: "Super Admin",
+    status: "Active",
+  },
+  {
+    id: "ADM002",
+    name: "Ramesh Branch Manager",
+    email: "manager@finsecure.ai",
+    password: "manager123",
+    role: "Branch Manager",
+    status: "Active",
+  },
+  {
+    id: "ADM003",
+    name: "Priya Loan Officer",
+    email: "loan@finsecure.ai",
+    password: "loan123",
+    role: "Loan Officer",
+    status: "Active",
+  },
+  {
+    id: "ADM004",
+    name: "Fraud Analyst",
+    email: "fraud@finsecure.ai",
+    password: "fraud123",
+    role: "Fraud Analyst",
+    status: "Active",
+  },
+  {
+    id: "ADM005",
+    name: "Customer Support",
+    email: "support@finsecure.ai",
+    password: "support123",
+    role: "Customer Support",
+    status: "Active",
+  },
+  {
+    id: "ADM006",
+    name: "Report Analyst",
+    email: "reports@finsecure.ai",
+    password: "reports123",
+    role: "Report Analyst",
+    status: "Active",
+  },
+];
+
+const seedDefaultAdmins = async () => {
+  for (const adminData of defaultAdmins) {
+    const existingAdmin = await Admin.findOne({ email: adminData.email });
+
+    if (!existingAdmin) {
+      const hashedPassword = await bcrypt.hash(adminData.password, 10);
+
+      await Admin.create({
+        id: adminData.id,
+        name: adminData.name,
+        email: adminData.email,
+        password: hashedPassword,
+        role: adminData.role,
+        status: adminData.status,
+      });
+    }
+  }
 };
 
-router.post("/register", async (req, res) => {
+router.post("/login", async (req: any, res: any) => {
   try {
-    const {
-      name,
-      email,
-      password,
-      role,
-      phone,
-      aadhaarNumber,
-      panNumber,
-    } = req.body;
+    await seedDefaultAdmins();
 
-    if (!name || !email || !password) {
-      return res.status(400).json({
-        message: "Name, email, and password are required",
-      });
-    }
-
-    if (!phone) {
-      return res.status(400).json({
-        message: "Phone number is required",
-      });
-    }
-
-    if (!aadhaarNumber) {
-      return res.status(400).json({
-        message: "Aadhaar card number is required",
-      });
-    }
-
-    if (!panNumber) {
-      return res.status(400).json({
-        message: "PAN card number is required",
-      });
-    }
-
-    const existingUser = await User.findOne({
-      email: String(email).toLowerCase().trim(),
-    });
-
-    if (existingUser) {
-      return res.status(400).json({
-        message: "User already exists with this email",
-      });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = await User.create({
-      name: String(name).trim(),
-      email: String(email).toLowerCase().trim(),
-      password: hashedPassword,
-      role: role || "customer",
-      phone: String(phone).trim(),
-      aadhaarNumber: String(aadhaarNumber).trim(),
-      panNumber: String(panNumber).toUpperCase().trim(),
-    });
-
-    const token = createToken(user);
-
-    res.status(201).json({
-      message: "Registration successful",
-      token,
-      user: cleanUser(user),
-    });
-  } catch (error) {
-    console.error("Register error:", error);
-
-    res.status(500).json({
-      message: "Registration failed",
-    });
-  }
-});
-
-router.post("/login", async (req, res) => {
-  try {
     const { email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
+        success: false,
         message: "Email and password are required",
       });
     }
 
-    const user = await User.findOne({
-      email: String(email).toLowerCase().trim(),
-    });
+    const admin = await Admin.findOne({
+      email: String(email).toLowerCase(),
+    })
+      .select("+password")
+      .lean();
 
-    if (!user) {
-      return res.status(400).json({
+    if (!admin) {
+      return res.status(401).json({
+        success: false,
         message: "Invalid email or password",
       });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    if (admin.status !== "Active") {
+      return res.status(403).json({
+        success: false,
+        message: "Admin account is inactive",
+      });
+    }
 
-    if (!isMatch) {
-      return res.status(400).json({
+    const isPasswordCorrect = await bcrypt.compare(password, admin.password);
+
+    if (!isPasswordCorrect) {
+      return res.status(401).json({
+        success: false,
         message: "Invalid email or password",
       });
     }
 
-    const token = createToken(user);
+    const token = createToken(admin);
 
-    res.json({
+    return res.status(200).json({
+      success: true,
       message: "Login successful",
       token,
-      user: cleanUser(user),
+      data: {
+        id: admin.id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role,
+        status: admin.status,
+      },
     });
-  } catch (error) {
-    console.error("Login error:", error);
-
-    res.status(500).json({
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
       message: "Login failed",
+      error: error.message,
+    });
+  }
+});
+
+router.get("/me", protectAdmin, async (req: any, res: any) => {
+  return res.status(200).json({
+    success: true,
+    message: "Admin profile fetched successfully",
+    data: req.admin,
+  });
+});
+
+router.get("/demo-users", async (req: any, res: any) => {
+  try {
+    await seedDefaultAdmins();
+
+    return res.status(200).json({
+      success: true,
+      message: "Demo admin users",
+      data: defaultAdmins.map((admin) => ({
+        name: admin.name,
+        email: admin.email,
+        password: admin.password,
+        role: admin.role,
+      })),
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch demo users",
+      error: error.message,
     });
   }
 });

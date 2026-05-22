@@ -1,9 +1,11 @@
 const express = require("express");
 const Customer = require("../models/Customer");
 
-console.log("✅ STRICT CUSTOMER ROUTES LOADED");
+console.log("✅ STRICT FINSECURE CUSTOMER ROUTES LOADED");
 
 const router = express.Router();
+
+const FINSECURE_IFSC_REGEX = /^FINS0[A-Z0-9]{6}$/;
 
 const generateCustomerId = () => {
   return `CUS${Date.now()}`;
@@ -81,8 +83,8 @@ const validateCustomer = (body: any, isEdit = false) => {
       return "IFSC code is required";
     }
 
-    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscValue)) {
-      return "IFSC code must be like SBIN0001234";
+    if (!FINSECURE_IFSC_REGEX.test(ifscValue)) {
+      return "IFSC code must be like FINS0001001";
     }
   }
 
@@ -150,7 +152,10 @@ const normalizeCustomerPayload = (body: any) => {
   }
 
   if (payload.accountNumber !== undefined) {
-    payload.accountNumber = String(payload.accountNumber || "").replace(/\D/g, "");
+    payload.accountNumber = String(payload.accountNumber || "").replace(
+      /\D/g,
+      ""
+    );
   }
 
   if (payload.ifsc !== undefined) {

@@ -1,6 +1,4 @@
-import { Employee } from "../types/Employee";
-
-export const employees: Employee[] = [
+const employees = [
   {
     id: "EMP001",
     name: "Ramesh Kumar",
@@ -38,3 +36,5 @@ export const employees: Employee[] = [
     status: "Inactive",
   },
 ];
+
+module.exports = employees;

@@ -1,174 +1,192 @@
 const express = require("express");
+const Transaction = require("../models/Transaction");
+const calculateTransactionRisk = require("../utils/riskScoring");
 
 const router = express.Router();
 
-const transactions: any[] = [
-  {
-    id: "TXN001",
-    customer: "Ravi Kumar",
-    accountNumber: "XXXX XXXX 2101",
-    type: "UPI Payment",
-    amount: "₹24,500",
-    date: "13 May 2026",
-    time: "10:42 AM",
-    ref: "UPI18382992",
-    status: "Success",
-    risk: "Normal",
-  },
-  {
-    id: "TXN002",
-    customer: "Meena Devi",
-    accountNumber: "XXXX XXXX 2102",
-    type: "NEFT",
-    amount: "₹3,50,000",
-    date: "13 May 2026",
-    time: "11:12 AM",
-    ref: "NEFT773991",
-    status: "Flagged",
-    risk: "High",
-  },
-  {
-    id: "TXN003",
-    customer: "Suresh Babu",
-    accountNumber: "XXXX XXXX 2103",
-    type: "EMI Payment",
-    amount: "₹15,030",
-    date: "14 May 2026",
-    time: "09:15 AM",
-    ref: "EMI998877",
-    status: "Success",
-    risk: "Normal",
-  },
-];
-
 const generateTransactionId = () => {
-  const maxIdNumber = transactions.reduce((max: number, transaction: any) => {
-    const numberPart = Number(transaction.id.replace("TXN", ""));
-    return numberPart > max ? numberPart : max;
-  }, 0);
-
-  return `TXN${String(maxIdNumber + 1).padStart(3, "0")}`;
+  return `TXN${Date.now()}`;
 };
 
-router.get("/", (req: any, res: any) => {
-  return res.status(200).json({
-    success: true,
-    count: transactions.length,
-    data: transactions,
-  });
-});
+router.get("/", async (req: any, res: any) => {
+  try {
+    const transactions = await Transaction.find({})
+      .select("-_id -__v")
+      .sort({ createdAt: -1 })
+      .lean();
 
-router.get("/:id", (req: any, res: any) => {
-  const transaction = transactions.find(
-    (item: any) => item.id === req.params.id
-  );
-
-  if (!transaction) {
-    return res.status(404).json({
+    return res.status(200).json({
+      success: true,
+      count: transactions.length,
+      data: transactions,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
       success: false,
-      message: "Transaction not found",
+      message: "Failed to fetch transactions",
+      error: error.message,
     });
   }
-
-  return res.status(200).json({
-    success: true,
-    data: transaction,
-  });
 });
 
-router.post("/", (req: any, res: any) => {
-  const {
-    customer,
-    accountNumber,
-    type,
-    amount,
-    date,
-    time,
-    ref,
-    status,
-    risk,
-  } = req.body;
+router.post("/", async (req: any, res: any) => {
+  try {
+    const {
+      customer,
+      accountNumber,
+      type,
+      amount,
+      date,
+      time,
+      ref,
+      status,
+    } = req.body;
 
-  if (!customer || !accountNumber || !type || !amount || !date || !time) {
-    return res.status(400).json({
+    if (!customer || !accountNumber || !type || !amount || !date || !time) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Customer, account number, type, amount, date and time are required",
+      });
+    }
+
+    const aiRisk = calculateTransactionRisk({
+      customer,
+      accountNumber,
+      type,
+      amount,
+      date,
+      time,
+      ref,
+      status,
+    });
+
+    const transaction = await Transaction.create({
+      id: generateTransactionId(),
+      customer,
+      accountNumber,
+      type,
+      amount,
+      date,
+      time,
+      ref: ref || "",
+      status: status || "Success",
+      risk: aiRisk.risk,
+      riskScore: aiRisk.riskScore,
+      riskReasons: aiRisk.riskReasons,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Transaction created successfully with AI risk score",
+      data: {
+        id: transaction.id,
+        customer: transaction.customer,
+        accountNumber: transaction.accountNumber,
+        type: transaction.type,
+        amount: transaction.amount,
+        date: transaction.date,
+        time: transaction.time,
+        ref: transaction.ref,
+        status: transaction.status,
+        risk: transaction.risk,
+        riskScore: transaction.riskScore,
+        riskReasons: transaction.riskReasons,
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({
       success: false,
-      message:
-        "Customer, account number, transaction type, amount, date and time are required",
+      message: "Failed to create transaction",
+      error: error.message,
     });
   }
-
-  const newTransaction = {
-    id: generateTransactionId(),
-    customer,
-    accountNumber,
-    type,
-    amount,
-    date,
-    time,
-    ref: ref || `REF${Date.now()}`,
-    status: status || "Success",
-    risk: risk || "Normal",
-  };
-
-  transactions.push(newTransaction);
-
-  return res.status(201).json({
-    success: true,
-    message: "Transaction created successfully",
-    data: newTransaction,
-  });
 });
 
-router.put("/:id", (req: any, res: any) => {
-  const transactionIndex = transactions.findIndex(
-    (item: any) => item.id === req.params.id
-  );
+router.put("/:id", async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
 
-  if (transactionIndex === -1) {
-    return res.status(404).json({
+    const existingTransaction = await Transaction.findOne({ id });
+
+    if (!existingTransaction) {
+      return res.status(404).json({
+        success: false,
+        message: "Transaction not found",
+      });
+    }
+
+    const updatedData = {
+      customer: req.body.customer ?? existingTransaction.customer,
+      accountNumber:
+        req.body.accountNumber ?? existingTransaction.accountNumber,
+      type: req.body.type ?? existingTransaction.type,
+      amount: req.body.amount ?? existingTransaction.amount,
+      date: req.body.date ?? existingTransaction.date,
+      time: req.body.time ?? existingTransaction.time,
+      ref: req.body.ref ?? existingTransaction.ref,
+      status: req.body.status ?? existingTransaction.status,
+    };
+
+    const aiRisk = calculateTransactionRisk(updatedData);
+
+    const transaction = await Transaction.findOneAndUpdate(
+      { id },
+      {
+        ...updatedData,
+        risk: aiRisk.risk,
+        riskScore: aiRisk.riskScore,
+        riskReasons: aiRisk.riskReasons,
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    )
+      .select("-_id -__v")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Transaction updated successfully with AI risk score",
+      data: transaction,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
       success: false,
-      message: "Transaction not found",
+      message: "Failed to update transaction",
+      error: error.message,
     });
   }
-
-  const existingTransaction: any = transactions[transactionIndex];
-
-  const updatedTransaction = {
-    ...existingTransaction,
-    ...req.body,
-    id: existingTransaction.id,
-    status: req.body.status || existingTransaction.status,
-    risk: req.body.risk || existingTransaction.risk,
-  };
-
-  transactions[transactionIndex] = updatedTransaction;
-
-  return res.status(200).json({
-    success: true,
-    message: "Transaction updated successfully",
-    data: updatedTransaction,
-  });
 });
 
-router.delete("/:id", (req: any, res: any) => {
-  const transactionIndex = transactions.findIndex(
-    (item: any) => item.id === req.params.id
-  );
+router.delete("/:id", async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
 
-  if (transactionIndex === -1) {
-    return res.status(404).json({
+    const transaction = await Transaction.findOneAndDelete({ id })
+      .select("-_id -__v")
+      .lean();
+
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: "Transaction not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Transaction deleted successfully",
+      data: transaction,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
       success: false,
-      message: "Transaction not found",
+      message: "Failed to delete transaction",
+      error: error.message,
     });
   }
-
-  const deletedTransaction: any = transactions.splice(transactionIndex, 1)[0];
-
-  return res.status(200).json({
-    success: true,
-    message: "Transaction deleted successfully",
-    data: deletedTransaction,
-  });
 });
 
 module.exports = router;
