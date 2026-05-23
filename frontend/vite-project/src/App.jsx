@@ -22,8 +22,8 @@ export default function App() {
 function UnifiedAuth() {
   const [mode, setMode] = useState("login");
 
-  const [loginEmail, setLoginEmail] = useState("admin@finsecure.ai");
-  const [loginPassword, setLoginPassword] = useState("admin123");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
 
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
@@ -43,20 +43,93 @@ function UnifiedAuth() {
   const [loading, setLoading] = useState(false);
 
   const saveCustomerSession = (user, token) => {
+    const customerData = {
+      ...user,
+      role: "customer",
+      name: user.name || user.customerName || "Customer",
+      customerName: user.customerName || user.name || "Customer",
+      email: user.email || "",
+      phone: user.phone || user.phoneNumber || "",
+      phoneNumber: user.phoneNumber || user.phone || "",
+      aadhaarNumber: user.aadhaarNumber || "",
+      panNumber: user.panNumber || "",
+      balance: user.balance || 0,
+      totalIncome: user.totalIncome || 0,
+      totalExpense: user.totalExpense || 0,
+    };
+
     localStorage.clear();
+
     localStorage.setItem("token", token);
-    localStorage.setItem("role", user.role || "customer");
-    localStorage.setItem("userName", user.name || user.customerName || "");
-    localStorage.setItem("userEmail", user.email || "");
-    localStorage.setItem("userPhone", user.phone || user.phoneNumber || "");
-    localStorage.setItem("userAadhaar", user.aadhaarNumber || "");
-    localStorage.setItem("userPan", user.panNumber || "");
+    localStorage.setItem("authToken", token);
+    localStorage.setItem("accessToken", token);
+    localStorage.setItem("customerToken", token);
+    localStorage.setItem("userToken", token);
+    localStorage.setItem("finsecure_token", token);
+
+    localStorage.setItem("role", "customer");
+    localStorage.setItem("userRole", "customer");
+
+    localStorage.setItem("user", JSON.stringify(customerData));
+    localStorage.setItem("currentUser", JSON.stringify(customerData));
+    localStorage.setItem("authUser", JSON.stringify(customerData));
+    localStorage.setItem("loggedInUser", JSON.stringify(customerData));
+    localStorage.setItem("customer", JSON.stringify(customerData));
+    localStorage.setItem("customerData", JSON.stringify(customerData));
+    localStorage.setItem("currentCustomer", JSON.stringify(customerData));
+    localStorage.setItem("loggedInCustomer", JSON.stringify(customerData));
+    localStorage.setItem("finsecure_customer", JSON.stringify(customerData));
+
+    localStorage.setItem("userName", customerData.name);
+    localStorage.setItem("customerName", customerData.name);
+    localStorage.setItem("userEmail", customerData.email);
+    localStorage.setItem("customerEmail", customerData.email);
+    localStorage.setItem("userPhone", customerData.phone);
+    localStorage.setItem("customerPhone", customerData.phone);
+    localStorage.setItem("userAadhaar", customerData.aadhaarNumber);
+    localStorage.setItem("userPan", customerData.panNumber);
+
+    localStorage.setItem("isLoggedIn", "true");
+    localStorage.setItem("isAuthenticated", "true");
+    localStorage.setItem("customerLoggedIn", "true");
   };
 
   const saveAdminSession = (user, token) => {
+    const adminData = {
+      ...user,
+      role: user.role || "admin",
+      name: user.name || "Admin",
+      email: user.email || "admin@finsecure.ai",
+    };
+
     localStorage.clear();
-    localStorage.setItem("finsecure_admin", JSON.stringify(user));
+
+    localStorage.setItem("token", token);
+    localStorage.setItem("authToken", token);
+    localStorage.setItem("accessToken", token);
+    localStorage.setItem("adminToken", token);
     localStorage.setItem("finsecure_token", token);
+
+    localStorage.setItem("role", "admin");
+    localStorage.setItem("userRole", "admin");
+
+    localStorage.setItem("user", JSON.stringify(adminData));
+    localStorage.setItem("currentUser", JSON.stringify(adminData));
+    localStorage.setItem("authUser", JSON.stringify(adminData));
+    localStorage.setItem("loggedInUser", JSON.stringify(adminData));
+    localStorage.setItem("admin", JSON.stringify(adminData));
+    localStorage.setItem("adminData", JSON.stringify(adminData));
+    localStorage.setItem("loggedInAdmin", JSON.stringify(adminData));
+    localStorage.setItem("finsecure_admin", JSON.stringify(adminData));
+
+    localStorage.setItem("userName", adminData.name);
+    localStorage.setItem("adminName", adminData.name);
+    localStorage.setItem("userEmail", adminData.email);
+    localStorage.setItem("adminEmail", adminData.email);
+
+    localStorage.setItem("isLoggedIn", "true");
+    localStorage.setItem("isAuthenticated", "true");
+    localStorage.setItem("adminLoggedIn", "true");
   };
 
   const handleLogin = async (event) => {
@@ -73,7 +146,7 @@ function UnifiedAuth() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: loginEmail,
+          email: loginEmail.trim().toLowerCase(),
           password: loginPassword,
         }),
       });
@@ -81,7 +154,7 @@ function UnifiedAuth() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || "Login failed");
+        throw new Error(result.message || "Invalid email or password");
       }
 
       const user = result.user || result.data;
@@ -125,7 +198,7 @@ function UnifiedAuth() {
       setSuccess("");
 
       if (!registerForm.name.trim()) {
-        throw new Error("Name is required");
+        throw new Error("Full name is required");
       }
 
       if (!registerForm.email.trim()) {
@@ -142,13 +215,13 @@ function UnifiedAuth() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: registerForm.name,
-          email: registerForm.email,
+          name: registerForm.name.trim(),
+          email: registerForm.email.trim().toLowerCase(),
           password: registerForm.password,
           role: "customer",
-          phone: registerForm.phone,
-          aadhaarNumber: registerForm.aadhaarNumber,
-          panNumber: registerForm.panNumber,
+          phone: registerForm.phone.trim(),
+          aadhaarNumber: registerForm.aadhaarNumber.trim(),
+          panNumber: registerForm.panNumber.trim().toUpperCase(),
         }),
       });
 
@@ -211,7 +284,7 @@ function UnifiedAuth() {
         <p style={styles.subtitle}>
           {mode === "login"
             ? "One secure login for Admin and Customer banking portals."
-            : "Create your customer account securely."}
+            : "Create your customer account securely on the same page."}
         </p>
 
         {mode === "login" ? (
@@ -227,7 +300,6 @@ function UnifiedAuth() {
             />
 
             <label style={styles.label}>Password</label>
-
             <div style={styles.passwordWrap}>
               <input
                 style={styles.passwordInput}
@@ -242,6 +314,7 @@ function UnifiedAuth() {
                 type="button"
                 style={styles.eyeButton}
                 onClick={() => setShowLoginPassword(!showLoginPassword)}
+                title={showLoginPassword ? "Hide password" : "Show password"}
               >
                 {showLoginPassword ? "🙈" : "👁️"}
               </button>
@@ -261,7 +334,7 @@ function UnifiedAuth() {
               style={styles.input}
               value={registerForm.name}
               onChange={(e) => updateRegisterForm("name", e.target.value)}
-              placeholder="Enter customer name"
+              placeholder="Enter customer full name"
               required
             />
 
@@ -318,6 +391,7 @@ function UnifiedAuth() {
                 type="button"
                 style={styles.eyeButton}
                 onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                title={showRegisterPassword ? "Hide password" : "Show password"}
               >
                 {showRegisterPassword ? "🙈" : "👁️"}
               </button>
@@ -334,16 +408,16 @@ function UnifiedAuth() {
 
         <div style={styles.portalButtons}>
           {mode === "login" ? (
-            <button style={styles.customerButton} onClick={openRegister}>
+            <button type="button" style={styles.customerButton} onClick={openRegister}>
               Create Customer Account
             </button>
           ) : (
-            <button style={styles.customerButton} onClick={openLogin}>
+            <button type="button" style={styles.customerButton} onClick={openLogin}>
               Already Have Account? Login
             </button>
           )}
 
-          <button style={styles.adminButton} onClick={openAdminDirect}>
+          <button type="button" style={styles.adminButton} onClick={openAdminDirect}>
             Admin Direct Login
           </button>
         </div>
