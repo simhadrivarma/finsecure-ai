@@ -5,6 +5,44 @@ import AdminPanel from "./AdminPanel";
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
+function hasAdminSession() {
+  const token =
+    localStorage.getItem("finsecure_token") ||
+    localStorage.getItem("adminToken") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("token");
+
+  const adminRaw =
+    localStorage.getItem("finsecure_admin") ||
+    localStorage.getItem("admin") ||
+    localStorage.getItem("adminData") ||
+    localStorage.getItem("loggedInAdmin") ||
+    localStorage.getItem("currentUser") ||
+    localStorage.getItem("user");
+
+  if (!token || !adminRaw) return false;
+
+  try {
+    const admin = JSON.parse(adminRaw);
+
+    const role = String(
+      admin?.role ||
+        localStorage.getItem("role") ||
+        localStorage.getItem("userRole") ||
+        ""
+    ).toLowerCase();
+
+    return (
+      role.includes("admin") ||
+      role.includes("super") ||
+      admin?.email === "admin@finsecure.ai"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
   const path = window.location.pathname;
 
@@ -13,6 +51,11 @@ export default function App() {
   }
 
   if (path === "/admin") {
+    if (!hasAdminSession()) {
+      window.history.replaceState(null, "", "/");
+      return <UnifiedAuth />;
+    }
+
     return <AdminPanel />;
   }
 
@@ -97,8 +140,8 @@ function UnifiedAuth() {
   const saveAdminSession = (user, token) => {
     const adminData = {
       ...user,
-      role: user.role || "admin",
-      name: user.name || "Admin",
+      role: user.role || "Super Admin",
+      name: user.name || "FinSecure Super Admin",
       email: user.email || "admin@finsecure.ai",
     };
 
@@ -110,8 +153,8 @@ function UnifiedAuth() {
     localStorage.setItem("adminToken", token);
     localStorage.setItem("finsecure_token", token);
 
-    localStorage.setItem("role", "admin");
-    localStorage.setItem("userRole", "admin");
+    localStorage.setItem("role", adminData.role);
+    localStorage.setItem("userRole", adminData.role);
 
     localStorage.setItem("user", JSON.stringify(adminData));
     localStorage.setItem("currentUser", JSON.stringify(adminData));
@@ -168,6 +211,7 @@ function UnifiedAuth() {
 
       const isAdmin =
         role.includes("admin") ||
+        role.includes("super") ||
         role.includes("manager") ||
         role.includes("officer") ||
         role.includes("analyst") ||
@@ -269,7 +313,13 @@ function UnifiedAuth() {
   };
 
   const openAdminDirect = () => {
-    window.location.href = "/admin";
+    setMode("login");
+    setLoginEmail("admin@finsecure.ai");
+    setLoginPassword("");
+    setError("");
+    setSuccess(
+      "Admin email selected. Enter admin password and click Login Securely."
+    );
   };
 
   return (
@@ -391,7 +441,9 @@ function UnifiedAuth() {
                 type="button"
                 style={styles.eyeButton}
                 onClick={() => setShowRegisterPassword(!showRegisterPassword)}
-                title={showRegisterPassword ? "Hide password" : "Show password"}
+                title={
+                  showRegisterPassword ? "Hide password" : "Show password"
+                }
               >
                 {showRegisterPassword ? "🙈" : "👁️"}
               </button>
@@ -408,23 +460,35 @@ function UnifiedAuth() {
 
         <div style={styles.portalButtons}>
           {mode === "login" ? (
-            <button type="button" style={styles.customerButton} onClick={openRegister}>
+            <button
+              type="button"
+              style={styles.customerButton}
+              onClick={openRegister}
+            >
               Create Customer Account
             </button>
           ) : (
-            <button type="button" style={styles.customerButton} onClick={openLogin}>
+            <button
+              type="button"
+              style={styles.customerButton}
+              onClick={openLogin}
+            >
               Already Have Account? Login
             </button>
           )}
 
-          <button type="button" style={styles.adminButton} onClick={openAdminDirect}>
+          <button
+            type="button"
+            style={styles.adminButton}
+            onClick={openAdminDirect}
+          >
             Admin Direct Login
           </button>
         </div>
 
         <p style={styles.note}>
-          Admin users will go to Admin Portal. Customer users will go to Customer
-          Dashboard automatically.
+          Admin users will go to Admin Portal. Customer users will go to
+          Customer Dashboard automatically.
         </p>
       </div>
     </div>
