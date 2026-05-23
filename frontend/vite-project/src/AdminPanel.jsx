@@ -13,21 +13,20 @@ const API = {
   transaction: `${API_BASE_URL}/api/admin-transactions`,
   dashboard: `${API_BASE_URL}/api/dashboard`,
   report: `${API_BASE_URL}/api/reports`,
-  login: `${API_BASE_URL}/api/auth/login`,
   profile: `${API_BASE_URL}/api/auth/profile`,
   changePassword: `${API_BASE_URL}/api/auth/change-password`,
 };
 
 const todayDate = new Date().toISOString().slice(0, 10);
 
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("finsecure_token");
-
-  return {
-    "Content-Type": "application/json",
-    Authorization: token ? `Bearer ${token}` : "",
-  };
-};
+const adminRoles = [
+  "Super Admin",
+  "Branch Manager",
+  "Loan Officer",
+  "Fraud Analyst",
+  "Customer Support",
+  "Report Analyst",
+];
 
 const menuItems = [
   { key: "dashboard", label: "Dashboard", icon: "🏦" },
@@ -40,7 +39,7 @@ const menuItems = [
   { key: "transaction", label: "Transactions", icon: "🔁" },
   { key: "ai", label: "AI Insights", icon: "🤖" },
   { key: "report", label: "Reports", icon: "📊" },
-  { key: "settings", label: "Basic Settings", icon: "⚙️" },
+  { key: "settings", label: "Settings", icon: "⚙️" },
 ];
 
 const roleAccess = {
@@ -71,15 +70,6 @@ const roleAccess = {
   "Report Analyst": ["dashboard", "report", "settings"],
 };
 
-const adminRoles = [
-  "Super Admin",
-  "Branch Manager",
-  "Loan Officer",
-  "Fraud Analyst",
-  "Customer Support",
-  "Report Analyst",
-];
-
 const configs = {
   admin: {
     title: "Admin",
@@ -101,7 +91,6 @@ const configs = {
         label: "Password",
         type: "password",
         requiredOnAdd: true,
-        placeholder: "Leave empty while editing if unchanged",
       },
       {
         name: "role",
@@ -119,15 +108,6 @@ const configs = {
         options: ["Active", "Inactive"],
       },
     ],
-  },
-
-  auditLog: {
-    title: "Audit Log",
-    pageTitle: "Audit Logs",
-    buttonText: "",
-    api: API.auditLog,
-    columns: [],
-    fields: [],
   },
 
   employee: {
@@ -152,6 +132,7 @@ const configs = {
         label: "Role",
         type: "select",
         required: true,
+        defaultValue: "Customer Support Executive",
         options: [
           "Branch Manager",
           "Loan Officer",
@@ -164,7 +145,7 @@ const configs = {
       },
       { name: "email", label: "Email", required: true },
       { name: "phone", label: "Phone Number", required: true },
-      { name: "joiningDate", label: "Date of Joining" },
+      { name: "joiningDate", label: "Date of Joining", type: "date" },
       { name: "branch", label: "Branch Name", required: true },
       { name: "ifsc", label: "IFSC Code", required: true },
       {
@@ -227,6 +208,8 @@ const configs = {
     columns: [
       ["id", "Customer ID"],
       ["name", "Name"],
+      ["email", "Email"],
+      ["phone", "Phone"],
       ["accountNumber", "Account Number"],
       ["accountType", "Account Type"],
       ["ifsc", "IFSC"],
@@ -246,6 +229,7 @@ const configs = {
         label: "Account Type",
         type: "select",
         required: true,
+        defaultValue: "Savings Account",
         options: [
           "Savings Account",
           "Current Account",
@@ -303,6 +287,7 @@ const configs = {
         label: "Loan Type",
         type: "select",
         required: true,
+        defaultValue: "Personal Loan",
         options: [
           "Home Loan",
           "Business Loan",
@@ -314,8 +299,8 @@ const configs = {
       },
       { name: "amount", label: "Loan Amount", required: true },
       { name: "interest", label: "Interest Rate", required: true },
-      { name: "startDate", label: "Start Date", required: true },
-      { name: "endDate", label: "End Date", required: true },
+      { name: "startDate", label: "Start Date", type: "date", required: true },
+      { name: "endDate", label: "End Date", type: "date", required: true },
       { name: "emi", label: "Monthly EMI", defaultValue: "₹0" },
       { name: "paid", label: "Paid Amount", defaultValue: "₹0" },
       { name: "pending", label: "Pending Amount", defaultValue: "₹0" },
@@ -356,6 +341,7 @@ const configs = {
         label: "Transaction Type",
         type: "select",
         required: true,
+        defaultValue: "UPI Payment",
         options: [
           "UPI Payment",
           "NEFT",
@@ -368,8 +354,8 @@ const configs = {
         ],
       },
       { name: "amount", label: "Amount", required: true },
-      { name: "date", label: "Date", required: true },
-      { name: "time", label: "Time", required: true },
+      { name: "date", label: "Date", type: "date", required: true },
+      { name: "time", label: "Time", type: "time", required: true },
       { name: "ref", label: "Reference Number", defaultValue: "" },
       {
         name: "status",
@@ -409,6 +395,7 @@ const configs = {
         label: "Report Type",
         type: "select",
         required: true,
+        defaultValue: "Customer",
         options: [
           "Employee",
           "Branch",
@@ -426,7 +413,7 @@ const configs = {
         defaultValue: 0,
       },
       { name: "generatedBy", label: "Generated By", defaultValue: "Admin" },
-      { name: "generatedDate", label: "Generated Date", defaultValue: todayDate },
+      { name: "generatedDate", label: "Generated Date", type: "date", defaultValue: todayDate },
       {
         name: "status",
         label: "Status",
@@ -438,91 +425,79 @@ const configs = {
   },
 };
 
-function LoginPage({ onLogin }) {
-  const [email, setEmail] = useState("admin@finsecure.ai");
-  const [password, setPassword] = useState("admin123");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+function getStoredAdmin() {
+  const possibleKeys = [
+    "finsecure_admin",
+    "admin",
+    "adminData",
+    "loggedInAdmin",
+    "currentUser",
+    "user",
+  ];
 
-  const login = async (event) => {
-    event.preventDefault();
-
+  for (const key of possibleKeys) {
     try {
-      setLoading(true);
-      setError("");
+      const value = localStorage.getItem(key);
+      if (!value) continue;
 
-      const response = await fetch(API.login, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || "Login failed");
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
       }
-
-      localStorage.setItem("finsecure_admin", JSON.stringify(result.data));
-      localStorage.setItem("finsecure_token", result.token);
-      onLogin(result.data, result.token);
-    } catch (err) {
-      setError(err.message || "Login failed");
-    } finally {
-      setLoading(false);
+    } catch {
+      continue;
     }
-  };
+  }
 
+  return null;
+}
+
+function getStoredToken() {
   return (
-    <div className="login-page">
-      <form className="login-card" onSubmit={login}>
-        <div className="login-logo">F</div>
-
-        <h1>FinSecure AI</h1>
-        <p>Admin Banking Panel Login</p>
-
-        <label>
-          Email
-          <input value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-
-        <label>
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-
-        {error && <div className="error-box">{error}</div>}
-
-        <button className="primary-btn" disabled={loading}>
-          {loading ? "Logging in..." : "Login"}
-        </button>
-
-        <small>Only Super Admin can create new admin accounts.</small>
-      </form>
-    </div>
+    localStorage.getItem("finsecure_token") ||
+    localStorage.getItem("adminToken") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("token") ||
+    ""
   );
+}
+
+function getAuthHeaders() {
+  const token = getStoredToken();
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: token ? `Bearer ${token}` : "",
+  };
+}
+
+function normalizeAdminRole(role) {
+  const text = String(role || "").trim();
+
+  if (!text) return "Super Admin";
+  if (text.toLowerCase() === "admin") return "Super Admin";
+  if (text.toLowerCase() === "superadmin") return "Super Admin";
+
+  return text;
 }
 
 function Badge({ value }) {
   const text = String(value || "Normal");
   const lower = text.toLowerCase();
 
-  let type = "normal";
+  let style = styles.badgeNormal;
 
   if (
     ["active", "success", "verified", "ready", "normal", "closed"].includes(
       lower
     )
   ) {
-    type = "good";
+    style = styles.badgeGood;
   }
 
   if (["pending", "review", "medium", "low"].includes(lower)) {
-    type = "warn";
+    style = styles.badgeWarn;
   }
 
   if (
@@ -536,1649 +511,17 @@ function Badge({ value }) {
       "failed",
     ].includes(lower)
   ) {
-    type = "bad";
+    style = styles.badgeBad;
   }
 
-  return <span className={`badge ${type}`}>{text}</span>;
+  return <span style={style}>{text}</span>;
 }
 
-function Dashboard({ dashboardData, counts }) {
-  const riskDistribution = dashboardData.riskDistribution || {
-    normal: 0,
-    low: 0,
-    medium: 0,
-    high: 0,
-  };
-
-  const recentTransactions = dashboardData.recentTransactions || [];
-
-  const maxRiskValue = Math.max(
-    riskDistribution.normal || 0,
-    riskDistribution.low || 0,
-    riskDistribution.medium || 0,
-    riskDistribution.high || 0,
-    1
-  );
-
-  const cards = [
-    [
-      "Total Admins",
-      dashboardData.totalAdmins || counts.admin,
-      "Admin user accounts",
-      "🛡️",
-    ],
-    [
-      "Total Customers",
-      dashboardData.totalCustomers || counts.customer,
-      `${dashboardData.activeCustomers || 0} active customers`,
-      "👥",
-    ],
-    [
-      "Total Employees",
-      dashboardData.totalEmployees || counts.employee,
-      "Banking staff records",
-      "👨‍💼",
-    ],
-    [
-      "Total Branches",
-      dashboardData.totalBranches || counts.branch,
-      "Operational branches",
-      "🏢",
-    ],
-    [
-      "Total Loans",
-      dashboardData.totalLoans || counts.loan,
-      `${dashboardData.activeLoans || 0} active loans`,
-      "💰",
-    ],
-    [
-      "AI Risk Alerts",
-      dashboardData.aiRiskAlerts || 0,
-      "High / medium / flagged alerts",
-      "🤖",
-    ],
-  ];
-
-  const moneyCards = [
-    [
-      "Customer Balance",
-      dashboardData.totalBalance || "₹0",
-      "Total customer balance",
-    ],
-    [
-      "Branch Balance",
-      dashboardData.branchBalance || "₹0",
-      "Total branch balance",
-    ],
-    ["Loan Amount", dashboardData.totalLoanAmount || "₹0", "Total loan value"],
-    [
-      "Transaction Volume",
-      dashboardData.transactionVolume || "₹0",
-      "Total transaction value",
-    ],
-  ];
-
-  const riskBars = [
-    ["Normal", riskDistribution.normal || 0],
-    ["Low", riskDistribution.low || 0],
-    ["Medium", riskDistribution.medium || 0],
-    ["High", riskDistribution.high || 0],
-  ];
-
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1>Admin Dashboard</h1>
-          <p>
-            Real-time overview of admins, branches, customers, loans,
-            transactions and AI banking risks.
-          </p>
-        </div>
-      </div>
-
-      <div className="stats-grid">
-        {cards.map(([title, value, subtitle, icon]) => (
-          <div className="stat-card" key={title}>
-            <div className="stat-icon">{icon}</div>
-            <div>
-              <p>{title}</p>
-              <h2>{value}</h2>
-              <span>{subtitle}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="money-grid">
-        {moneyCards.map(([title, value, subtitle]) => (
-          <div className="money-card" key={title}>
-            <p>{title}</p>
-            <h2>{value}</h2>
-            <span>{subtitle}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="two-grid">
-        <div className="panel">
-          <h3>AI Risk Distribution</h3>
-
-          <div className="risk-bars">
-            {riskBars.map(([label, value]) => (
-              <div className="risk-row" key={label}>
-                <div className="risk-row-top">
-                  <strong>{label}</strong>
-                  <span>{value}</span>
-                </div>
-
-                <div className="risk-track">
-                  <div
-                    className={`risk-fill ${String(label).toLowerCase()}`}
-                    style={{
-                      width: `${Math.max(
-                        (Number(value) / maxRiskValue) * 100,
-                        4
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel">
-          <h3>Recent Transactions</h3>
-
-          <div className="activity-list">
-            {recentTransactions.length === 0 ? (
-              <div>No recent transactions found.</div>
-            ) : (
-              recentTransactions.map((item) => (
-                <div key={item.id}>
-                  <strong>{item.customer}</strong>
-                  <p>
-                    {item.type} • {item.amount} • {item.date} {item.time}
-                  </p>
-                  <Badge value={item.risk} />
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="two-grid dashboard-bottom">
-        <div className="panel">
-          <h3>Security Summary</h3>
-
-          <div className="activity-list">
-            <div>
-              <strong>Audit Logs</strong>
-              <p>
-                {dashboardData.totalAuditLogs || counts.auditLog} security
-                action records saved.
-              </p>
-            </div>
-
-            <div>
-              <strong>Reports</strong>
-              <p>
-                {dashboardData.totalReports || counts.report} reports generated.
-              </p>
-            </div>
-
-            <div>
-              <strong>Risk Alerts</strong>
-              <p>{dashboardData.aiRiskAlerts || 0} alerts need manual review.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="panel">
-          <h3>Banking AI Status</h3>
-
-          <div className="activity-list">
-            <div>
-              <strong>Risk Scoring Active</strong>
-              <p>Transactions are checked by amount, status, type and time.</p>
-            </div>
-
-            <div>
-              <strong>Role Security Active</strong>
-              <p>Pages are protected by admin role permissions.</p>
-            </div>
-
-            <div>
-              <strong>Audit Monitoring Active</strong>
-              <p>Admin actions are tracked automatically.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function EntityModal({ config, mode, item, onClose, onSave }) {
-  const createEmpty = () => {
-    const obj = {};
-
-    config.fields.forEach((field) => {
-      if (field.defaultValue !== undefined) {
-        obj[field.name] = field.defaultValue;
-      } else if (field.type === "number") {
-        obj[field.name] = 0;
-      } else if (field.type === "select") {
-        obj[field.name] = field.options[0];
-      } else {
-        obj[field.name] = "";
-      }
-    });
-
-    return obj;
-  };
-
-  const [form, setForm] = useState(item || createEmpty());
-  const [formError, setFormError] = useState("");
-  const viewOnly = mode === "view";
-
-  const getInputType = (field) => {
-    if (field.type) return field.type;
-
-    const name = String(field.name || "").toLowerCase();
-
-    if (name.includes("email")) return "email";
-    if (name.includes("phone")) return "tel";
-
-    if (
-      name.includes("date") ||
-      ["joiningdate", "startdate", "enddate", "generateddate"].includes(name)
-    ) {
-      return "date";
-    }
-
-    if (name === "time") return "time";
-
-    return "text";
-  };
-
-  const getPlaceholder = (field) => {
-    if (field.placeholder) return field.placeholder;
-    if (field.name === "ifsc") return "Example: FINS0001001";
-    if (field.name === "phone") return "10 digit mobile number";
-    if (field.name === "accountNumber") return "9 to 18 digit account number";
-    return "";
-  };
-
-  const normalizeMoney = (value) => {
-    const clean = String(value || "")
-      .replace(/₹/g, "")
-      .replace(/,/g, "")
-      .trim();
-
-    if (clean === "") return "";
-
-    const numberValue = Number(clean);
-
-    if (Number.isNaN(numberValue)) return value;
-
-    return `₹${numberValue.toLocaleString("en-IN")}`;
-  };
-
-  const validateForm = () => {
-    for (const field of config.fields) {
-      const value = form[field.name];
-      const required = field.required || (mode === "add" && field.requiredOnAdd);
-
-      if (required && !String(value || "").trim()) {
-        return `Please fill ${field.label}`;
-      }
-    }
-
-    for (const field of config.fields) {
-      const key = String(field.name || "").toLowerCase();
-      const value = String(form[field.name] || "").trim();
-
-      if (!value) continue;
-
-      if (key.includes("email")) {
-        const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-        if (!ok) return "Please enter a valid email address";
-      }
-
-      if (key.includes("phone")) {
-        const digits = value.replace(/\D/g, "");
-        if (digits.length !== 10) {
-          return "Phone number must be exactly 10 digits";
-        }
-      }
-
-      if (key === "accountnumber") {
-        const digits = value.replace(/\D/g, "");
-        if (digits.length < 9 || digits.length > 18) {
-          return "Account number must be 9 to 18 digits";
-        }
-      }
-
-      if (key === "ifsc") {
-        const ok = /^FINS0[A-Z0-9]{6}$/.test(value.toUpperCase());
-        if (!ok) return "IFSC code must be like FINS0001001";
-      }
-
-      if (key === "cif") {
-        const ok = /^[A-Z0-9]{6,20}$/i.test(value);
-        if (!ok) return "CIF number must be 6 to 20 letters/numbers";
-      }
-
-      if (key === "password" && mode === "add" && value.length < 6) {
-        return "Password must be at least 6 characters";
-      }
-
-      if (key === "password" && mode === "edit" && value && value.length < 6) {
-        return "Password must be at least 6 characters";
-      }
-
-      if (
-        ["amount", "balance", "emi", "paid", "pending", "loans"].includes(key)
-      ) {
-        const clean = value.replace(/₹/g, "").replace(/,/g, "").trim();
-
-        if (clean && Number.isNaN(Number(clean))) {
-          return `${field.label} must be a valid number`;
-        }
-
-        if (key === "amount" && Number(clean) <= 0) {
-          return "Amount must be greater than 0";
-        }
-      }
-    }
-
-    if (form.startDate && form.endDate) {
-      const start = new Date(form.startDate);
-      const end = new Date(form.endDate);
-
-      if (end < start) {
-        return "End date cannot be before start date";
-      }
-    }
-
-    return "";
-  };
-
-  const submit = (event) => {
-    event.preventDefault();
-    setFormError("");
-
-    const error = validateForm();
-
-    if (error) {
-      setFormError(error);
-      return;
-    }
-
-    const cleanedForm = { ...form };
-
-    if (mode === "edit" && cleanedForm.password === "") {
-      delete cleanedForm.password;
-    }
-
-    ["amount", "balance", "emi", "paid", "pending", "loans"].forEach((key) => {
-      if (cleanedForm[key] !== undefined && cleanedForm[key] !== "") {
-        cleanedForm[key] = normalizeMoney(cleanedForm[key]);
-      }
-    });
-
-    if (cleanedForm.ifsc) {
-      cleanedForm.ifsc = String(cleanedForm.ifsc).toUpperCase().trim();
-    }
-
-    if (cleanedForm.cif) {
-      cleanedForm.cif = String(cleanedForm.cif).toUpperCase().trim();
-    }
-
-    if (cleanedForm.email) {
-      cleanedForm.email = String(cleanedForm.email).toLowerCase().trim();
-    }
-
-    if (cleanedForm.phone) {
-      cleanedForm.phone = String(cleanedForm.phone).replace(/\D/g, "");
-    }
-
-    if (cleanedForm.accountNumber) {
-      cleanedForm.accountNumber = String(cleanedForm.accountNumber).replace(
-        /\D/g,
-        ""
-      );
-    }
-
-    onSave(cleanedForm);
-  };
-
-  const getTitleValue = () => {
-    return (
-      item?.name ||
-      item?.customer ||
-      item?.title ||
-      item?.branch ||
-      item?.manager ||
-      item?.id ||
-      config.title
-    );
-  };
-
-  const getSubtitleValue = () => {
-    return (
-      item?.email ||
-      item?.accountNumber ||
-      item?.ifsc ||
-      item?.role ||
-      item?.type ||
-      item?.status ||
-      "FinSecure AI Record"
-    );
-  };
-
-  const getIcon = () => {
-    const title = String(config.title || "").toLowerCase();
-
-    if (title.includes("customer")) return "👤";
-    if (title.includes("loan")) return "💰";
-    if (title.includes("transaction")) return "🔁";
-    if (title.includes("admin")) return "🛡️";
-    if (title.includes("employee")) return "👨‍💼";
-    if (title.includes("branch")) return "🏢";
-    if (title.includes("report")) return "📊";
-
-    return "🏦";
-  };
-
-  const getDetailRows = () => {
-    const rows = [];
-
-    if (item?.id) {
-      rows.push(["id", "Record ID"]);
-    }
-
-    config.columns.forEach(([key, label]) => {
-      if (!rows.some(([existingKey]) => existingKey === key)) {
-        rows.push([key, label]);
-      }
-    });
-
-    config.fields.forEach((field) => {
-      if (!rows.some(([existingKey]) => existingKey === field.name)) {
-        rows.push([field.name, field.label]);
-      }
-    });
-
-    return rows.filter(([key]) => key !== "password");
-  };
-
-  const renderDetailValue = (key) => {
-    const value = item?.[key];
-
-    if (value === undefined || value === null || value === "") {
-      return "-";
-    }
-
-    if (["status", "kyc", "risk"].includes(key)) {
-      return <Badge value={value} />;
-    }
-
-    return String(value);
-  };
-
-  if (viewOnly) {
-    return (
-      <div className="modal-bg">
-        <div className="modal detail-modal">
-          <div className="modal-top">
-            <div>
-              <h2>View {config.title}</h2>
-              <p>Professional banking record details</p>
-            </div>
-
-            <button className="close-btn" onClick={onClose}>
-              ×
-            </button>
-          </div>
-
-          <div className="detail-hero">
-            <div className="detail-icon">{getIcon()}</div>
-
-            <div>
-              <h2>{getTitleValue()}</h2>
-              <p>{getSubtitleValue()}</p>
-            </div>
-          </div>
-
-          <div className="detail-section-title">Record Information</div>
-
-          <div className="detail-grid">
-            {getDetailRows().map(([key, label]) => (
-              <div className="detail-item" key={key}>
-                <span className="detail-label">{label}</span>
-                <strong className="detail-value">{renderDetailValue(key)}</strong>
-              </div>
-            ))}
-          </div>
-
-          <div className="detail-actions">
-            <button className="secondary-btn" onClick={onClose}>
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="modal-bg">
-      <div className="modal">
-        <div className="modal-top">
-          <div>
-            <h2>{mode === "add" ? `Add ${config.title}` : `Edit ${config.title}`}</h2>
-            <p>{config.title} details</p>
-          </div>
-
-          <button className="close-btn" onClick={onClose}>
-            ×
-          </button>
-        </div>
-
-        {formError && <div className="error-box form-error">{formError}</div>}
-
-        <form className="form-grid" onSubmit={submit}>
-          {mode !== "add" && (
-            <label>
-              ID
-              <input value={form.id || ""} disabled />
-            </label>
-          )}
-
-          {config.fields.map((field) => {
-            const inputType = getInputType(field);
-
-            return (
-              <label key={field.name}>
-                {field.label}
-                {field.required || (mode === "add" && field.requiredOnAdd)
-                  ? " *"
-                  : ""}
-
-                {field.type === "select" ? (
-                  <select
-                    value={form[field.name] || ""}
-                    onChange={(e) =>
-                      setForm({ ...form, [field.name]: e.target.value })
-                    }
-                  >
-                    {field.options.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type={inputType}
-                    value={form[field.name] ?? ""}
-                    placeholder={getPlaceholder(field)}
-                    onChange={(e) => {
-                      let value = e.target.value;
-
-                      if (field.type === "number") {
-                        value = Number(value);
-                      }
-
-                      if (field.name === "ifsc" || field.name === "cif") {
-                        value = value.toUpperCase();
-                      }
-
-                      setForm({ ...form, [field.name]: value });
-                    }}
-                  />
-                )}
-              </label>
-            );
-          })}
-
-          <div className="modal-actions">
-            <button type="button" className="secondary-btn" onClick={onClose}>
-              Cancel
-            </button>
-
-            <button className="primary-btn">Save {config.title}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function ProfileModal({ admin, onClose, onSave }) {
-  const [name, setName] = useState(admin?.name || "");
-  const [email, setEmail] = useState(admin?.email || "");
-  const [loading, setLoading] = useState(false);
-
-  const submit = async (event) => {
-    event.preventDefault();
-
-    if (!name.trim() || !email.trim()) {
-      alert("Name and email are required");
-      return;
-    }
-
-    setLoading(true);
-    await onSave({ name, email });
-    setLoading(false);
-  };
-
-  return (
-    <div className="modal-bg">
-      <div className="modal small-modal">
-        <div className="modal-top">
-          <div>
-            <h2>Profile Settings</h2>
-            <p>Update your admin name and email.</p>
-          </div>
-
-          <button className="close-btn" onClick={onClose}>
-            ×
-          </button>
-        </div>
-
-        <form className="single-form" onSubmit={submit}>
-          <label>
-            Admin Name
-            <input value={name} onChange={(e) => setName(e.target.value)} />
-          </label>
-
-          <label>
-            Email
-            <input value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
-
-          <div className="modal-actions">
-            <button type="button" className="secondary-btn" onClick={onClose}>
-              Cancel
-            </button>
-
-            <button className="primary-btn" disabled={loading}>
-              {loading ? "Saving..." : "Save Profile"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function PasswordModal({ onClose, onSave }) {
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const submit = async (event) => {
-    event.preventDefault();
-
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      alert("Please fill all password fields");
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      alert("New password must be at least 6 characters");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      alert("New password and confirm password do not match");
-      return;
-    }
-
-    setLoading(true);
-    await onSave({ currentPassword, newPassword });
-    setLoading(false);
-  };
-
-  return (
-    <div className="modal-bg">
-      <div className="modal small-modal">
-        <div className="modal-top">
-          <div>
-            <h2>Change Password</h2>
-            <p>Update your login password securely.</p>
-          </div>
-
-          <button className="close-btn" onClick={onClose}>
-            ×
-          </button>
-        </div>
-
-        <form className="single-form" onSubmit={submit}>
-          <label>
-            Current Password
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-            />
-          </label>
-
-          <label>
-            New Password
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-            />
-          </label>
-
-          <label>
-            Confirm New Password
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-          </label>
-
-          <div className="modal-actions">
-            <button type="button" className="secondary-btn" onClick={onClose}>
-              Cancel
-            </button>
-
-            <button className="primary-btn" disabled={loading}>
-              {loading ? "Changing..." : "Change Password"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-function EntityTable(props) {
-  const {
-    config = {},
-    loading = false,
-    onView,
-    onEdit,
-    onDelete,
-  } = props;
-
-  const tableData =
-    Array.isArray(props.data)
-      ? props.data
-      : Array.isArray(props.rows)
-      ? props.rows
-      : Array.isArray(props.items)
-      ? props.items
-      : [];
-
-  const columns = Array.isArray(config.columns) ? config.columns : [];
-  const title = config.title || "Records";
-
-  const getCellValue = (item, key) => {
-    const value = item?.[key];
-
-    if (value === undefined || value === null || value === "") {
-      return "-";
-    }
-
-    if (Array.isArray(value)) {
-      return value.length ? value.join(", ") : "-";
-    }
-
-    return String(value);
-  };
-
-  const shouldShowBadge = (key) => {
-    return ["status", "kyc", "risk"].includes(String(key).toLowerCase());
-  };
-
-  const renderCell = (item, key) => {
-    const value = getCellValue(item, key);
-
-    if (shouldShowBadge(key) && value !== "-" && typeof Badge === "function") {
-      return <Badge value={value} />;
-    }
-
-    return <span className="table-cell-text">{value}</span>;
-  };
-
-  if (loading) {
-    return (
-      <div className="table-shell polished-table-shell">
-        <div className="table-loading-state">
-          <div className="loader-orb"></div>
-          <h3>Loading {title}</h3>
-          <p>Please wait while FinSecure AI fetches secure banking records.</p>
-
-          <div className="skeleton-table">
-            {[1, 2, 3, 4].map((row) => (
-              <div className="skeleton-row" key={row}>
-                <span></span>
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="table-shell polished-table-shell">
-      <div className="table-scroll">
-        <table className="data-table polished-data-table">
-          <thead>
-            <tr>
-              {columns.map(([key, label]) => (
-                <th key={key}>{label}</th>
-              ))}
-
-              <th className="actions-head">Actions</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {tableData.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length + 1}>
-                  <div className="empty-state-box">
-                    <div className="empty-state-icon">🏦</div>
-                    <h3>No {title} Found</h3>
-                    <p>
-                      There are no records available right now. Add a new record
-                      or clear filters to view banking data.
-                    </p>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              tableData.map((item, index) => (
-                <tr key={item.id || item._id || index}>
-                  {columns.map(([key]) => (
-                    <td key={key}>{renderCell(item, key)}</td>
-                  ))}
-
-                  <td>
-                    <div className="table-actions">
-                      {onView && (
-                        <button
-                          type="button"
-                          className="action-btn view-action"
-                          onClick={() => onView(item)}
-                        >
-                          View
-                        </button>
-                      )}
-
-                      {onEdit && (
-                        <button
-                          type="button"
-                          className="action-btn edit-action"
-                          onClick={() => onEdit(item)}
-                        >
-                          Edit
-                        </button>
-                      )}
-
-                      {onDelete && (
-                        <button
-                          type="button"
-                          className="action-btn delete-action"
-                          onClick={() => onDelete(item)}
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function EntityPage({
-  config,
-  rows,
-  search,
-  loading,
-  filters,
-  setFilters,
-  onAdd,
-  onView,
-  onEdit,
-  onDelete,
-}) {
-  const filterableKeys = [
-    "status",
-    "role",
-    "branch",
-    "kyc",
-    "risk",
-    "type",
-    "accountType",
-  ];
-
-  const filterFields = config.columns.filter(([key]) =>
-    filterableKeys.includes(key)
-  );
-
-  const getOptions = (key) => {
-    return [
-      ...new Set(
-        rows
-          .map((row) => row[key])
-          .filter((value) => value !== undefined && value !== null && value !== "")
-          .map((value) => String(value))
-      ),
-    ].sort();
-  };
-
-  const updateFilter = (key, value) => {
-    setFilters({
-      ...filters,
-      [key]: value,
-    });
-  };
-
-  const clearFilters = () => {
-    setFilters({});
-  };
-
-  const filteredRows = rows.filter((row) => {
-    const searchMatch = JSON.stringify(row)
-      .toLowerCase()
-      .includes(search.toLowerCase());
-
-    const filterMatch = Object.entries(filters).every(([key, value]) => {
-      if (!value) return true;
-
-      return (
-        String(row[key] || "").toLowerCase() === String(value).toLowerCase()
-      );
-    });
-
-    return searchMatch && filterMatch;
-  });
-
-  const getFileName = () => {
-    return config.pageTitle.replace(/\s+/g, "_").toLowerCase();
-  };
-
-  const cleanValue = (value) => {
-    if (value === undefined || value === null) return "";
-    return String(value).replace(/"/g, '""');
-  };
-
-  const exportExcel = () => {
-    if (filteredRows.length === 0) {
-      alert("No records available to export");
-      return;
-    }
-
-    const headers = config.columns.map(([, label]) => label);
-
-    const csvRows = [
-      headers.join(","),
-      ...filteredRows.map((row) =>
-        config.columns.map(([key]) => `"${cleanValue(row[key])}"`).join(",")
-      ),
-    ];
-
-    const csvContent = csvRows.join("\n");
-    const blob = new Blob([csvContent], {
-      type: "text/csv;charset=utf-8;",
-    });
-
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `${getFileName()}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  };
-
-  const exportPDF = () => {
-    if (filteredRows.length === 0) {
-      alert("No records available to export");
-      return;
-    }
-
-    const tableHeaders = config.columns
-      .map(([, label]) => `<th>${label}</th>`)
-      .join("");
-
-    const tableRows = filteredRows
-      .map(
-        (row) => `
-          <tr>
-            ${config.columns
-              .map(([key]) => `<td>${cleanValue(row[key])}</td>`)
-              .join("")}
-          </tr>
-        `
-      )
-      .join("");
-
-    const printWindow = window.open("", "_blank");
-
-    if (!printWindow) {
-      alert("Popup blocked. Please allow popups to export PDF.");
-      return;
-    }
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>${config.pageTitle}</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              padding: 24px;
-              color: #111827;
-            }
-
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 20px;
-              font-size: 12px;
-            }
-
-            th,
-            td {
-              border: 1px solid #cbd5e1;
-              padding: 8px;
-              text-align: left;
-            }
-
-            th {
-              background: #f1f5f9;
-            }
-          </style>
-        </head>
-
-        <body>
-          <h1>${config.pageTitle}</h1>
-          <p>Generated from FinSecure AI Admin Panel</p>
-
-          <table>
-            <thead>
-              <tr>${tableHeaders}</tr>
-            </thead>
-            <tbody>
-              ${tableRows}
-            </tbody>
-          </table>
-        </body>
-      </html>
-    `);
-
-    printWindow.document.close();
-    printWindow.print();
-  };
-
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1>{config.pageTitle}</h1>
-          <p>Manage {config.title.toLowerCase()} records securely.</p>
-        </div>
-
-        <div className="button-row">
-          <button className="secondary-btn" onClick={exportExcel}>
-            Export Excel
-          </button>
-
-          <button className="secondary-btn" onClick={exportPDF}>
-            Export PDF
-          </button>
-
-          {config.buttonText && (
-            <button className="primary-btn" onClick={onAdd}>
-              {config.buttonText}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {filterFields.length > 0 && (
-        <div className="filter-card">
-          <div className="filter-header">
-            <div>
-              <h3>Advanced Filters</h3>
-              <p>Filter records by status, role, branch, risk or type.</p>
-            </div>
-
-            <button className="secondary-btn" onClick={clearFilters}>
-              Clear Filters
-            </button>
-          </div>
-
-          <div className="filter-grid">
-            {filterFields.map(([key, label]) => (
-              <label key={key}>
-                {label}
-                <select
-                  value={filters[key] || ""}
-                  onChange={(e) => updateFilter(key, e.target.value)}
-                >
-                  <option value="">All {label}</option>
-
-                  {getOptions(key).map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
-          </div>
-
-          <div className="filter-result">
-            Showing <strong>{filteredRows.length}</strong> of{" "}
-            <strong>{rows.length}</strong> records
-          </div>
-        </div>
-      )}
-
-      <div className="table-card">
-        {loading ? (
-          <div className="loading-box">Loading from backend...</div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                {config.columns.map(([key, label]) => (
-                  <th key={key}>{label}</th>
-                ))}
-                <th>Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredRows.map((row) => (
-                <tr key={row.id}>
-                  {config.columns.map(([key]) => (
-                    <td key={key}>
-                      {["status", "kyc", "risk"].includes(key) ? (
-                        <Badge value={row[key]} />
-                      ) : (
-                        row[key]
-                      )}
-                    </td>
-                  ))}
-
-                  <td>
-                    <div className="actions">
-                      <button onClick={() => onView(row)}>View</button>
-                      <button onClick={() => onEdit(row)}>Edit</button>
-                      <button
-                        className="danger-btn"
-                        onClick={() => onDelete(row)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {filteredRows.length === 0 && (
-                <tr>
-                  <td colSpan={config.columns.length + 1}>
-                    No records found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </>
-  );
-}
-
-function AuditLogsPage({
-  rows,
-  search,
-  loading,
-  filters,
-  setFilters,
-  onRefresh,
-  onClear,
-}) {
-  const columns = [
-    ["id", "Log ID"],
-    ["action", "Action"],
-    ["module", "Module"],
-    ["adminName", "Admin"],
-    ["adminEmail", "Email"],
-    ["adminRole", "Role"],
-    ["description", "Description"],
-    ["targetName", "Target"],
-    ["status", "Status"],
-    ["createdAt", "Date & Time"],
-  ];
-
-  const filterFields = [
-    ["status", "Status"],
-    ["module", "Module"],
-    ["action", "Action"],
-    ["adminRole", "Admin Role"],
-  ];
-
-  const getOptions = (key) => {
-    return [
-      ...new Set(
-        rows
-          .map((row) => row[key])
-          .filter((value) => value !== undefined && value !== null && value !== "")
-          .map((value) => String(value))
-      ),
-    ].sort();
-  };
-
-  const updateFilter = (key, value) => {
-    setFilters({
-      ...filters,
-      [key]: value,
-    });
-  };
-
-  const clearFilters = () => {
-    setFilters({});
-  };
-
-  const formatDate = (value) => {
-    if (!value) return "-";
-
-    try {
-      return new Date(value).toLocaleString("en-IN");
-    } catch {
-      return value;
-    }
-  };
-
-  const filteredRows = rows.filter((row) => {
-    const searchMatch = JSON.stringify(row)
-      .toLowerCase()
-      .includes(search.toLowerCase());
-
-    const filterMatch = Object.entries(filters).every(([key, value]) => {
-      if (!value) return true;
-
-      return (
-        String(row[key] || "").toLowerCase() === String(value).toLowerCase()
-      );
-    });
-
-    return searchMatch && filterMatch;
-  });
-
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1>Audit Logs</h1>
-          <p>Track admin login, profile, password and management actions.</p>
-        </div>
-
-        <div className="button-row">
-          <button className="secondary-btn" onClick={onRefresh}>
-            Refresh Logs
-          </button>
-
-          <button className="danger-main-btn" onClick={onClear}>
-            Clear Logs
-          </button>
-        </div>
-      </div>
-
-      <div className="filter-card">
-        <div className="filter-header">
-          <div>
-            <h3>Advanced Filters</h3>
-            <p>Filter audit logs by status, module, action or admin role.</p>
-          </div>
-
-          <button className="secondary-btn" onClick={clearFilters}>
-            Clear Filters
-          </button>
-        </div>
-
-        <div className="filter-grid">
-          {filterFields.map(([key, label]) => (
-            <label key={key}>
-              {label}
-              <select
-                value={filters[key] || ""}
-                onChange={(e) => updateFilter(key, e.target.value)}
-              >
-                <option value="">All {label}</option>
-
-                {getOptions(key).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
-        </div>
-
-        <div className="filter-result">
-          Showing <strong>{filteredRows.length}</strong> of{" "}
-          <strong>{rows.length}</strong> logs
-        </div>
-      </div>
-
-      <div className="table-card">
-        {loading ? (
-          <div className="loading-box">Loading audit logs...</div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                {columns.map(([key, label]) => (
-                  <th key={key}>{label}</th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredRows.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.id}</td>
-                  <td>{row.action}</td>
-                  <td>{row.module}</td>
-                  <td>{row.adminName || "-"}</td>
-                  <td>{row.adminEmail || "-"}</td>
-                  <td>{row.adminRole || "-"}</td>
-                  <td>{row.description}</td>
-                  <td>{row.targetName || "-"}</td>
-                  <td>
-                    <Badge value={row.status} />
-                  </td>
-                  <td>{formatDate(row.createdAt)}</td>
-                </tr>
-              ))}
-
-              {filteredRows.length === 0 && (
-                <tr>
-                  <td colSpan="10">No audit logs found.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </>
-  );
-}
-
-function AIInsights({ transactions, onRefresh, onReviewTransactions }) {
-  const riskyTransactions = transactions.filter((transaction) => {
-    const risk = String(transaction.risk || "").toLowerCase();
-    const status = String(transaction.status || "").toLowerCase();
-
-    return (
-      risk === "high" ||
-      risk === "medium" ||
-      status === "flagged" ||
-      status === "failed"
-    );
-  });
-
-  const highRiskTransactions = riskyTransactions.filter(
-    (transaction) => String(transaction.risk || "").toLowerCase() === "high"
-  );
-
-  const mediumRiskTransactions = riskyTransactions.filter(
-    (transaction) => String(transaction.risk || "").toLowerCase() === "medium"
-  );
-
-  const flaggedTransactions = riskyTransactions.filter((transaction) =>
-    ["flagged", "failed"].includes(
-      String(transaction.status || "").toLowerCase()
-    )
-  );
-
-  const getReasons = (transaction) => {
-    if (Array.isArray(transaction.riskReasons)) {
-      return transaction.riskReasons;
-    }
-
-    return ["AI risk reasons not available"];
-  };
-
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1>AI Insights</h1>
-          <p>Real AI-powered fraud detection based on transaction risk scoring.</p>
-        </div>
-
-        <div className="button-row">
-          <button className="secondary-btn" onClick={onRefresh}>
-            Refresh AI Insights
-          </button>
-
-          <button className="primary-btn" onClick={onReviewTransactions}>
-            Open Transactions
-          </button>
-        </div>
-      </div>
-
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon">🚨</div>
-          <div>
-            <p>High Risk</p>
-            <h2>{highRiskTransactions.length}</h2>
-            <span>Needs urgent review</span>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon">⚠️</div>
-          <div>
-            <p>Medium Risk</p>
-            <h2>{mediumRiskTransactions.length}</h2>
-            <span>Needs monitoring</span>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon">🚩</div>
-          <div>
-            <p>Flagged / Failed</p>
-            <h2>{flaggedTransactions.length}</h2>
-            <span>Transaction status alerts</span>
-          </div>
-        </div>
-      </div>
-
-      {riskyTransactions.length === 0 ? (
-        <div className="panel">
-          <h3>No risky transactions found</h3>
-          <p>
-            Add a high-value, failed, flagged, or night-time transaction to see
-            AI insights here.
-          </p>
-        </div>
-      ) : (
-        <div className="two-grid">
-          {riskyTransactions.map((transaction) => (
-            <div className="panel" key={transaction.id}>
-              <div className="risk-card-top">
-                <div>
-                  <h3>{transaction.customer}</h3>
-                  <p>{transaction.accountNumber}</p>
-                </div>
-
-                <Badge value={transaction.risk} />
-              </div>
-
-              <div className="activity-list">
-                <div>
-                  <strong>Transaction Type</strong>
-                  <p>{transaction.type}</p>
-                </div>
-
-                <div>
-                  <strong>Amount</strong>
-                  <p>{transaction.amount}</p>
-                </div>
-
-                <div>
-                  <strong>Date & Time</strong>
-                  <p>
-                    {transaction.date} {transaction.time}
-                  </p>
-                </div>
-
-                <div>
-                  <strong>AI Risk Score</strong>
-                  <p>{transaction.riskScore || 0}</p>
-                </div>
-
-                <div>
-                  <strong>Risk Reasons</strong>
-                  <ul>
-                    {getReasons(transaction).map((reason, index) => (
-                      <li key={index}>{reason}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              <button className="primary-btn" onClick={onReviewTransactions}>
-                Review Transaction
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
-
-function Settings({
-  dark,
-  setDark,
-  fontSize,
-  setFontSize,
-  onLogout,
-  onOpenProfile,
-  onOpenPassword,
-}) {
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1>Basic Settings</h1>
-          <p>Normal settings for appearance, profile, password and logout.</p>
-        </div>
-      </div>
-
-      <div className="two-grid">
-        <div className="panel">
-          <h3>Appearance</h3>
-          <p>Switch theme mode.</p>
-          <button className="primary-btn" onClick={() => setDark(!dark)}>
-            {dark ? "Dark Mode" : "Light Mode"}
-          </button>
-        </div>
-
-        <div className="panel">
-          <h3>Font Size</h3>
-          <div className="button-row">
-            {["Small", "Normal", "Large"].map((size) => (
-              <button
-                key={size}
-                className={fontSize === size ? "primary-btn" : "secondary-btn"}
-                onClick={() => setFontSize(size)}
-              >
-                {size}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel">
-          <h3>Account</h3>
-          <p>Update profile details and login password.</p>
-
-          <div className="button-row">
-            <button className="secondary-btn" onClick={onOpenProfile}>
-              Profile Settings
-            </button>
-
-            <button className="secondary-btn" onClick={onOpenPassword}>
-              Change Password
-            </button>
-          </div>
-        </div>
-
-        <div className="panel">
-          <h3>Security</h3>
-          <p>Logout from admin dashboard.</p>
-          <button className="danger-main-btn" onClick={onLogout}>
-            Logout
-          </button>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function AccessDenied({ role }) {
-  return (
-    <div className="panel">
-      <h2>Access Denied</h2>
-      <p>
-        Your current role <strong>{role}</strong> is not allowed to access this
-        page.
-      </p>
-      <p>Please contact Super Admin for permission.</p>
-    </div>
-  );
-}
-
-export default function App() {
-  const [admin, setAdmin] = useState(() => {
-    try {
-      const saved = localStorage.getItem("finsecure_admin");
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const [token, setToken] = useState(
-    () => localStorage.getItem("finsecure_token") || ""
-  );
-
+export default function AdminPanel() {
+  const [admin, setAdmin] = useState(() => getStoredAdmin());
+  const [token, setToken] = useState(() => getStoredToken());
   const [activePage, setActivePage] = useState("dashboard");
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState({});
   const [dark, setDark] = useState(false);
   const [fontSize, setFontSize] = useState("Normal");
 
@@ -2195,6 +538,8 @@ export default function App() {
 
   const [loading, setLoading] = useState({});
   const [dashboardData, setDashboardData] = useState({});
+  const [pageNotice, setPageNotice] = useState("");
+
   const [modal, setModal] = useState({
     open: false,
     type: "",
@@ -2202,13 +547,10 @@ export default function App() {
     item: null,
   });
 
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
-
-  const adminRole = admin?.role || "Super Admin";
+  const adminRole = normalizeAdminRole(admin?.role);
 
   const allowedPages = useMemo(() => {
-    return roleAccess[adminRole] || ["dashboard", "settings"];
+    return roleAccess[adminRole] || roleAccess["Super Admin"];
   }, [adminRole]);
 
   const allowedMenuItems = useMemo(() => {
@@ -2231,14 +573,20 @@ export default function App() {
 
   const logout = () => {
     localStorage.removeItem("finsecure_admin");
+    localStorage.removeItem("admin");
+    localStorage.removeItem("adminData");
+    localStorage.removeItem("loggedInAdmin");
     localStorage.removeItem("finsecure_token");
+    localStorage.removeItem("adminToken");
 
     setAdmin(null);
     setToken("");
-    setActivePage("dashboard");
+    window.location.href = "/";
   };
 
   const loadEntity = async (type) => {
+    if (!configs[type]) return;
+
     try {
       setLoading((prev) => ({ ...prev, [type]: true }));
 
@@ -2246,25 +594,38 @@ export default function App() {
         headers: getAuthHeaders(),
       });
 
-      const result = await response.json();
-
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        result = {};
       }
 
-      if (response.status === 403) {
-        console.warn(result.message || "Access denied");
+      if (response.status === 401 || response.status === 403) {
+        console.warn(`${type} access issue:`, result.message || response.status);
+        setPageNotice(
+          "Some admin data could not load because backend permissions or routes are not fully available yet. Your admin session is still active."
+        );
+        setData((prev) => ({ ...prev, [type]: [] }));
         return;
       }
 
       if (!response.ok) {
-        throw new Error(result.message || `Failed to load ${type}`);
+        console.warn(`${type} load issue:`, result.message || response.status);
+        setData((prev) => ({ ...prev, [type]: [] }));
+        return;
       }
 
-      setData((prev) => ({ ...prev, [type]: result.data || [] }));
+      const rows = Array.isArray(result.data)
+        ? result.data
+        : Array.isArray(result)
+        ? result
+        : [];
+
+      setData((prev) => ({ ...prev, [type]: rows }));
     } catch (err) {
       console.error(`${type} load error:`, err);
+      setData((prev) => ({ ...prev, [type]: [] }));
     } finally {
       setLoading((prev) => ({ ...prev, [type]: false }));
     }
@@ -2276,20 +637,44 @@ export default function App() {
         headers: getAuthHeaders(),
       });
 
-      const result = await response.json();
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        result = {};
+      }
 
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
+      if (response.status === 401 || response.status === 403) {
+        console.warn("Dashboard access issue:", result.message || response.status);
+        setDashboardData({});
+        return;
       }
 
       if (response.ok) {
-        setDashboardData(result.data || {});
+        setDashboardData(result.data || result || {});
+      } else {
+        console.warn("Dashboard load issue:", result.message || response.status);
+        setDashboardData({});
       }
     } catch (err) {
       console.error("Dashboard load error:", err);
+      setDashboardData({});
     }
   };
+
+  useEffect(() => {
+    const savedAdmin = getStoredAdmin();
+    const savedToken = getStoredToken();
+
+    if (!savedAdmin || !savedToken) {
+      setAdmin(null);
+      setToken("");
+      return;
+    }
+
+    setAdmin(savedAdmin);
+    setToken(savedToken);
+  }, []);
 
   useEffect(() => {
     if (!admin || !token) return;
@@ -2304,33 +689,48 @@ export default function App() {
   }, [admin, token, allowedPages]);
 
   useEffect(() => {
-    if (!admin || !token) return;
-
     if (!allowedPages.includes(activePage)) {
       setActivePage("dashboard");
     }
-  }, [admin, token, activePage, allowedPages]);
+  }, [activePage, allowedPages]);
+
+  const createEmptyForm = (type) => {
+    const config = configs[type];
+    const obj = {};
+
+    config.fields.forEach((field) => {
+      if (field.defaultValue !== undefined) {
+        obj[field.name] = field.defaultValue;
+      } else if (field.type === "number") {
+        obj[field.name] = 0;
+      } else if (field.type === "select") {
+        obj[field.name] = field.options?.[0] || "";
+      } else {
+        obj[field.name] = "";
+      }
+    });
+
+    return obj;
+  };
 
   const saveEntity = async (form) => {
     try {
       const type = modal.type;
       const config = configs[type];
       const isEdit = modal.mode === "edit";
+      const id = form._id || form.id;
 
-      const response = await fetch(
-        isEdit ? `${config.api}/${form.id}` : config.api,
-        {
-          method: isEdit ? "PUT" : "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify(form),
-        }
-      );
+      const response = await fetch(isEdit ? `${config.api}/${id}` : config.api, {
+        method: isEdit ? "PUT" : "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(form),
+      });
 
-      const result = await response.json();
-
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        result = {};
       }
 
       if (!response.ok) {
@@ -2352,21 +752,23 @@ export default function App() {
   };
 
   const deleteEntity = async (type, item) => {
-    const label = item.name || item.customer || item.title || item.id;
+    const label = item.name || item.customer || item.title || item.id || item._id;
 
     if (!window.confirm(`Delete ${label}?`)) return;
 
     try {
-      const response = await fetch(`${configs[type].api}/${item.id}`, {
+      const id = item._id || item.id;
+
+      const response = await fetch(`${configs[type].api}/${id}`, {
         method: "DELETE",
         headers: getAuthHeaders(),
       });
 
-      const result = await response.json();
-
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        result = {};
       }
 
       if (!response.ok) {
@@ -2389,121 +791,64 @@ export default function App() {
         headers: getAuthHeaders(),
       });
 
-      const result = await response.json();
-
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
-      }
-
       if (!response.ok) {
-        throw new Error(result.message || "Failed to clear audit logs");
+        alert("Unable to clear audit logs");
+        return;
       }
 
       await loadEntity("auditLog");
       await loadDashboard();
-
-      alert("Audit logs cleared successfully");
-    } catch (err) {
-      alert(err.message || "Failed to clear audit logs");
-    }
-  };
-
-  const updateProfile = async (profileData) => {
-    try {
-      const response = await fetch(API.profile, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(profileData),
-      });
-
-      const result = await response.json();
-
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
-      }
-
-      if (!response.ok) {
-        throw new Error(result.message || "Profile update failed");
-      }
-
-      localStorage.setItem("finsecure_admin", JSON.stringify(result.data));
-      localStorage.setItem("finsecure_token", result.token);
-
-      setAdmin(result.data);
-      setToken(result.token);
-      setProfileModalOpen(false);
-
-      alert("Profile updated successfully");
-    } catch (err) {
-      alert(err.message || "Profile update failed");
-    }
-  };
-
-  const changePassword = async (passwordData) => {
-    try {
-      const response = await fetch(API.changePassword, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(passwordData),
-      });
-
-      const result = await response.json();
-
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
-      }
-
-      if (!response.ok) {
-        throw new Error(result.message || "Password change failed");
-      }
-
-      setPasswordModalOpen(false);
-      alert("Password changed successfully. Please login again.");
-      logout();
-    } catch (err) {
-      alert(err.message || "Password change failed");
+    } catch {
+      alert("Unable to clear audit logs");
     }
   };
 
   if (!admin || !token) {
     return (
-      <>
-        <style>{styles}</style>
-        <LoginPage
-          onLogin={(adminData, loginToken) => {
-            setAdmin(adminData);
-            setToken(loginToken);
-          }}
-        />
-      </>
+      <div style={styles.loginFallbackPage}>
+        <div style={styles.loginFallbackCard}>
+          <div style={styles.logoCircle}>FS</div>
+          <h1>Admin Session Not Found</h1>
+          <p>Please login from the main FinSecure AI login page.</p>
+          <button style={styles.primaryBtn} onClick={() => (window.location.href = "/")}>
+            Go to Login
+          </button>
+        </div>
+      </div>
     );
   }
 
   const renderPage = () => {
     if (!allowedPages.includes(activePage)) {
-      return <AccessDenied role={adminRole} />;
+      return (
+        <div style={styles.panel}>
+          <h2>Access Denied</h2>
+          <p>
+            Your role <strong>{adminRole}</strong> cannot access this page.
+          </p>
+        </div>
+      );
     }
 
     if (activePage === "dashboard") {
-      return <Dashboard dashboardData={dashboardData} counts={counts} />;
+      return (
+        <DashboardPage
+          admin={admin}
+          adminRole={adminRole}
+          dashboardData={dashboardData}
+          counts={counts}
+          data={data}
+          setActivePage={setActivePage}
+        />
+      );
     }
 
     if (activePage === "auditLog") {
       return (
         <AuditLogsPage
-          rows={data.auditLog || []}
-          search={search}
+          rows={data.auditLog}
           loading={loading.auditLog}
-          filters={filters.auditLog || {}}
-          setFilters={(nextFilters) =>
-            setFilters((prev) => ({
-              ...prev,
-              auditLog: nextFilters,
-            }))
-          }
+          search={search}
           onRefresh={() => loadEntity("auditLog")}
           onClear={clearAuditLogs}
         />
@@ -2513,7 +858,7 @@ export default function App() {
     if (activePage === "ai") {
       return (
         <AIInsights
-          transactions={data.transaction || []}
+          transactions={data.transaction}
           onRefresh={() => loadEntity("transaction")}
           onReviewTransactions={() => setActivePage("transaction")}
         />
@@ -2522,14 +867,13 @@ export default function App() {
 
     if (activePage === "settings") {
       return (
-        <Settings
+        <SettingsPage
           dark={dark}
           setDark={setDark}
           fontSize={fontSize}
           setFontSize={setFontSize}
+          admin={admin}
           onLogout={logout}
-          onOpenProfile={() => setProfileModalOpen(true)}
-          onOpenPassword={() => setPasswordModalOpen(true)}
         />
       );
     }
@@ -2540,19 +884,12 @@ export default function App() {
         rows={data[activePage] || []}
         search={search}
         loading={loading[activePage]}
-        filters={filters[activePage] || {}}
-        setFilters={(nextFilters) =>
-          setFilters((prev) => ({
-            ...prev,
-            [activePage]: nextFilters,
-          }))
-        }
         onAdd={() =>
           setModal({
             open: true,
             type: activePage,
             mode: "add",
-            item: null,
+            item: createEmptyForm(activePage),
           })
         }
         onView={(item) =>
@@ -2577,23 +914,32 @@ export default function App() {
   };
 
   return (
-    <div className={`app ${dark ? "dark" : ""} font-${fontSize.toLowerCase()}`}>
-      <style>{styles}</style>
-
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-logo">F</div>
+    <div
+      style={{
+        ...styles.app,
+        ...(dark ? styles.appDark : {}),
+        fontSize:
+          fontSize === "Small" ? "14px" : fontSize === "Large" ? "18px" : "16px",
+      }}
+    >
+      <aside style={styles.sidebar}>
+        <div style={styles.brand}>
+          <div style={styles.brandLogo}>F</div>
           <div>
-            <h2>FinSecure AI</h2>
-            <span>Admin Banking Panel</span>
+            <h2 style={styles.brandTitle}>FinSecure AI</h2>
+            <span style={styles.brandSub}>Admin Banking Panel</span>
           </div>
         </div>
 
-        <nav>
+        <nav style={styles.nav}>
           {allowedMenuItems.map((item) => (
             <button
               key={item.key}
-              className={activePage === item.key ? "active" : ""}
+              style={
+                activePage === item.key
+                  ? styles.navButtonActive
+                  : styles.navButton
+              }
               onClick={() => setActivePage(item.key)}
             >
               <span>{item.icon}</span>
@@ -2602,38 +948,50 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="premium-box">
-          <p>Royal Exclusive Banking Privileges</p>
+        <div style={styles.premiumBox}>
+          <p style={styles.premiumText}>Royal Banking Privileges</p>
           <strong>{adminRole}</strong>
         </div>
       </aside>
 
-      <main className="main">
-        <header className="topbar">
-          <div className="search-box">
+      <main style={styles.main}>
+        <header style={styles.topbar}>
+          <div style={styles.searchBox}>
             <span>🔍</span>
             <input
+              style={styles.searchInput}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search admin, audit log, employee, customer..."
+              placeholder="Search admin, employee, customer, transaction..."
             />
           </div>
 
-          <div className="admin-box">
-            <div>
+          <div style={styles.adminBox}>
+            <div style={{ textAlign: "right" }}>
               <strong>{admin.name || "Admin"}</strong>
-              <p>{admin.role || "Super Admin"}</p>
+              <p style={styles.adminRole}>{adminRole}</p>
             </div>
 
-            <div className="avatar">{(admin.name || "A").charAt(0)}</div>
+            <div style={styles.avatar}>
+              {(admin.name || "A").charAt(0).toUpperCase()}
+            </div>
 
-            <button className="top-logout" onClick={logout}>
+            <button style={styles.logoutBtn} onClick={logout}>
               Logout
             </button>
           </div>
         </header>
 
-        <section className="content">{renderPage()}</section>
+        {pageNotice && (
+          <div style={styles.notice}>
+            {pageNotice}
+            <button style={styles.noticeClose} onClick={() => setPageNotice("")}>
+              ×
+            </button>
+          </div>
+        )}
+
+        <section style={styles.content}>{renderPage()}</section>
       </main>
 
       {modal.open && (
@@ -2652,1642 +1010,1174 @@ export default function App() {
           onSave={saveEntity}
         />
       )}
-
-      {profileModalOpen && (
-        <ProfileModal
-          admin={admin}
-          onClose={() => setProfileModalOpen(false)}
-          onSave={updateProfile}
-        />
-      )}
-
-      {passwordModalOpen && (
-        <PasswordModal
-          onClose={() => setPasswordModalOpen(false)}
-          onSave={changePassword}
-        />
-      )}
     </div>
   );
 }
 
-const styles = `
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  background: #eef2f7;
-}
-
-.detail-modal {
-  width: min(980px, 100%);
-}
-
-.detail-hero {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 18px;
-  border-radius: 22px;
-  background: linear-gradient(135deg, #eef4ff, #f8fafc);
-  border: 1px solid #dbe4f0;
-  margin-bottom: 18px;
-}
-
-.dark .detail-hero {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.12);
-}
-
-.detail-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 22px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-  font-size: 30px;
-}
-
-.detail-hero h2,
-.detail-hero p {
-  margin: 0;
-}
-
-.detail-hero p {
-  margin-top: 6px;
-  color: #64748b;
-}
-
-.dark .detail-hero p {
-  color: #cbd5e1;
-}
-
-.detail-section-title {
-  font-weight: 900;
-  margin: 10px 0 14px;
-  color: #334155;
-}
-
-.dark .detail-section-title {
-  color: #e5e7eb;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.detail-item {
-  padding: 14px;
-  border-radius: 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  display: grid;
-  gap: 8px;
-}
-
-.dark .detail-item {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.1);
-}
-
-.detail-label {
-  color: #64748b;
-  font-size: 12px;
-  text-transform: uppercase;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-}
-
-.dark .detail-label {
-  color: #cbd5e1;
-}
-
-.detail-value {
-  color: #0f172a;
-  overflow-wrap: anywhere;
-}
-
-.dark .detail-value {
-  color: #f8fafc;
-}
-
-.detail-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 18px;
-}
-
-@media (max-width: 950px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .detail-hero {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-
-button,
-input,
-select {
-  font-family: inherit;
-}
-
-.app {
-  min-height: 100vh;
-  display: flex;
-  background: #eef2f7;
-  color: #0f172a;
-}
-
-.app.dark {
-  background: #0f172a;
-  color: #e5e7eb;
-}
-
-.font-small {
-  font-size: 13px;
-}
-
-.font-normal {
-  font-size: 15px;
-}
-
-.font-large {
-  font-size: 17px;
-}
-
-.login-page {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #07122f, #111827);
-  padding: 20px;
-}
-
-.login-card {
-  width: min(470px, 100%);
-  display: grid;
-  gap: 14px;
-  background: white;
-  padding: 30px;
-  border-radius: 28px;
-  box-shadow: 0 30px 80px rgba(0,0,0,0.35);
-}
-
-.login-logo {
-  width: 62px;
-  height: 62px;
-  display: grid;
-  place-items: center;
-  margin: 0 auto;
-  border-radius: 20px;
-  color: white;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-  font-size: 30px;
-  font-weight: 900;
-}
-
-.login-card h1,
-.login-card p {
-  text-align: center;
-  margin: 0;
-}
-
-.login-card label {
-  display: grid;
-  gap: 7px;
-  font-weight: 800;
-}
-
-.login-card input,
-.login-card select,
-.form-grid input,
-.form-grid select,
-.single-form input {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  outline: none;
-}
-
-.error-box {
-  padding: 10px;
-  border-radius: 12px;
-  background: #fee2e2;
-  color: #991b1b;
-  font-weight: 800;
-}
-
-.form-error {
-  margin-bottom: 14px;
-}
-
-.sidebar {
-  width: 290px;
-  min-height: 100vh;
-  padding: 24px 18px;
-  background: linear-gradient(180deg, #07122f, #111827);
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: sticky;
-  top: 0;
-}
-
-.brand {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 25px;
-}
-
-.brand-logo,
-.avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-  color: white;
-  font-weight: 900;
-}
-
-.brand h2,
-.brand span {
-  margin: 0;
-}
-
-.brand span {
-  color: #cbd5e1;
-  font-size: 12px;
-}
-
-.sidebar nav {
-  display: grid;
-  gap: 8px;
-}
-
-.sidebar nav button {
-  border: 0;
-  background: transparent;
-  color: #cbd5e1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 14px;
-  border-radius: 14px;
-  cursor: pointer;
-  font-weight: 800;
-  text-align: left;
-}
-
-.sidebar nav button.active,
-.sidebar nav button:hover {
-  background: rgba(255,255,255,0.12);
-  color: white;
-}
-
-.premium-box {
-  margin-top: auto;
-  padding: 16px;
-  border-radius: 20px;
-  background: rgba(37, 99, 235, 0.25);
-  border: 1px solid rgba(255,255,255,0.12);
-}
-
-.premium-box p {
-  margin: 0 0 8px;
-}
-
-.main {
-  flex: 1;
-  min-width: 0;
-}
-
-.topbar {
-  height: 82px;
-  padding: 18px 28px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  background: rgba(255,255,255,0.75);
-  border-bottom: 1px solid #dbe4f0;
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  backdrop-filter: blur(16px);
-}
-
-.dark .topbar {
-  background: rgba(15,23,42,0.75);
-  border-color: rgba(255,255,255,0.1);
-}
-
-.search-box {
-  flex: 1;
-  max-width: 560px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: white;
-  border: 1px solid #dbe4f0;
-  border-radius: 18px;
-  padding: 12px 16px;
-}
-
-.dark .search-box {
-  background: #111827;
-  border-color: rgba(255,255,255,0.1);
-}
-
-.search-box input {
-  border: 0;
-  outline: 0;
-  flex: 1;
-  background: transparent;
-  color: inherit;
-}
-
-.admin-box {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: rgba(255,255,255,0.75);
-  padding: 8px 12px;
-  border-radius: 18px;
-}
-
-.dark .admin-box {
-  background: rgba(255,255,255,0.08);
-}
-
-.admin-box p {
-  margin: 0;
-  color: #64748b;
-  font-size: 12px;
-}
-
-.dark .admin-box p {
-  color: #cbd5e1;
-}
-
-.content {
-  padding: 28px;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  align-items: center;
-  margin-bottom: 22px;
-}
-
-.page-header h1 {
-  margin: 0;
-  font-size: 32px;
-}
-
-.page-header p {
-  margin: 8px 0 0;
-  color: #64748b;
-}
-
-.dark .page-header p {
-  color: #cbd5e1;
-}
-
-.primary-btn,
-.secondary-btn,
-.danger-main-btn,
-.top-logout,
-.actions button {
-  border: 0;
-  padding: 10px 14px;
-  border-radius: 12px;
-  cursor: pointer;
-  font-weight: 900;
-}
-
-.primary-btn {
-  color: white;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-}
-
-.primary-btn:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-.secondary-btn {
-  background: white;
-  color: #0f172a;
-  border: 1px solid #cbd5e1;
-}
-
-.danger-main-btn,
-.top-logout,
-.danger-btn {
-  background: #fee2e2 !important;
-  color: #991b1b !important;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 22px;
-}
-
-.money-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 22px;
-}
-
-.stat-card,
-.money-card,
-.panel,
-.table-card,
-.filter-card {
-  background: white;
-  border: 1px solid #dbe4f0;
-  border-radius: 24px;
-  box-shadow: 0 16px 40px rgba(15,23,42,0.06);
-}
-
-.dark .stat-card,
-.dark .money-card,
-.dark .panel,
-.dark .table-card,
-.dark .filter-card {
-  background: #111827;
-  border-color: rgba(255,255,255,0.1);
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px;
-}
-
-.money-card {
-  padding: 18px;
-}
-
-.stat-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  background: #eef4ff;
-  font-size: 24px;
-}
-
-.dark .stat-icon {
-  background: rgba(255,255,255,0.08);
-}
-
-.stat-card p,
-.stat-card h2,
-.stat-card span,
-.money-card p,
-.money-card h2,
-.money-card span {
-  margin: 0;
-}
-
-.money-card h2 {
-  margin: 8px 0;
-}
-
-.stat-card p,
-.stat-card span,
-.money-card p,
-.money-card span {
-  color: #64748b;
-}
-
-.dark .stat-card p,
-.dark .stat-card span,
-.dark .money-card p,
-.dark .money-card span {
-  color: #cbd5e1;
-}
-
-.two-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.panel {
-  padding: 20px;
-}
-
-.dashboard-bottom {
-  margin-top: 18px;
-}
-
-.activity-list {
-  display: grid;
-  gap: 12px;
-}
-
-.activity-list div {
-  padding: 13px;
-  border-radius: 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-}
-
-.dark .activity-list div {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.08);
-}
-
-.activity-list ul {
-  margin: 8px 0 0;
-  padding-left: 18px;
-}
-
-.risk-bars {
-  display: grid;
-  gap: 16px;
-}
-
-.risk-row-top {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.risk-track {
-  height: 12px;
-  border-radius: 999px;
-  background: #e2e8f0;
-  overflow: hidden;
-}
-
-.dark .risk-track {
-  background: rgba(255,255,255,0.12);
-}
-
-.risk-fill {
-  height: 100%;
-  border-radius: 999px;
-}
-
-.risk-fill.normal {
-  background: #22c55e;
-}
-
-.risk-fill.low {
-  background: #eab308;
-}
-
-.risk-fill.medium {
-  background: #f97316;
-}
-
-.risk-fill.high {
-  background: #ef4444;
-}
-
-.risk-card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-
-.risk-card-top h3,
-.risk-card-top p {
-  margin: 0;
-}
-
-.risk-card-top p {
-  color: #64748b;
-}
-
-.dark .risk-card-top p {
-  color: #cbd5e1;
-}
-
-.filter-card {
-  padding: 18px;
-  margin-bottom: 20px;
-}
-
-.filter-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.filter-header h3,
-.filter-header p {
-  margin: 0;
-}
-
-.filter-header p {
-  margin-top: 6px;
-  color: #64748b;
-}
-
-.dark .filter-header p {
-  color: #cbd5e1;
-}
-
-.filter-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.filter-grid label {
-  display: grid;
-  gap: 7px;
-  font-weight: 800;
-}
-
-.filter-grid select {
-  width: 100%;
-  padding: 11px;
-  border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  outline: none;
-  background: white;
-}
-
-.dark .filter-grid select {
-  background: #0f172a;
-  color: #e5e7eb;
-  border-color: rgba(255,255,255,0.14);
-}
-
-.filter-result {
-  margin-top: 14px;
-  color: #64748b;
-}
-
-.dark .filter-result {
-  color: #cbd5e1;
-}
-
-.table-card {
-  overflow: auto;
-}
-
-.loading-box {
-  padding: 20px;
-  font-weight: 900;
-}
-
-table {
-  width: 100%;
-  min-width: 1200px;
-  border-collapse: collapse;
-}
-
-th,
-td {
-  padding: 14px;
-  text-align: left;
-  border-bottom: 1px solid #e2e8f0;
-  white-space: nowrap;
-}
-
-.dark th,
-.dark td {
-  border-color: rgba(255,255,255,0.08);
-}
-
-th {
-  background: #f8fafc;
-  color: #475569;
-  font-size: 12px;
-  text-transform: uppercase;
-}
-
-.dark th {
-  background: rgba(255,255,255,0.04);
-  color: #cbd5e1;
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-}
-
-.badge {
-  display: inline-flex;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.badge.good {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.badge.warn {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.badge.bad {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.badge.normal {
-  background: #e0e7ff;
-  color: #3730a3;
-}
-
-.modal-bg {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgba(2,6,23,0.65);
-  z-index: 20;
-}
-
-.modal {
-  width: min(900px, 100%);
-  max-height: 92vh;
-  overflow: auto;
-  background: white;
-  color: #0f172a;
-  border-radius: 26px;
-  padding: 22px;
-}
-
-.small-modal {
-  width: min(520px, 100%);
-}
-
-.modal-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.modal-top h2,
-.modal-top p {
-  margin: 0;
-}
-
-.close-btn {
-  width: 38px;
-  height: 38px;
-  border: 0;
-  border-radius: 12px;
-  font-size: 24px;
-  cursor: pointer;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.form-grid label,
-.single-form label {
-  display: grid;
-  gap: 7px;
-  font-weight: 800;
-}
-
-.single-form {
-  display: grid;
-  gap: 14px;
-}
-
-.modal-actions {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.button-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 950px) {
-  .app {
-    display: block;
-  }
-
-  .sidebar {
-    width: 100%;
-    min-height: auto;
-    position: relative;
-  }
-
-  .stats-grid,
-  .money-grid,
-  .two-grid,
-  .filter-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .filter-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .topbar {
-    height: auto;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .admin-box {
-    flex-wrap: wrap;
-  }
-
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-}
-  .polished-table-shell {
-  overflow: hidden;
-  border-radius: 24px;
-  border: 1px solid #dbe4f0;
-  background: #ffffff;
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
-}
-
-.dark .polished-table-shell {
-  background: rgba(15, 23, 42, 0.92);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
-}
-
-.table-scroll {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.polished-data-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.polished-data-table th {
-  background: #f8fafc;
-  color: #334155;
-  font-size: 13px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  padding: 16px;
-  border-bottom: 1px solid #e2e8f0;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.dark .polished-data-table th {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e5e7eb;
-  border-bottom-color: rgba(255, 255, 255, 0.1);
-}
-
-.polished-data-table td {
-  padding: 16px;
-  border-bottom: 1px solid #edf2f7;
-  color: #0f172a;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-.dark .polished-data-table td {
-  color: #f8fafc;
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-}
-
-.polished-data-table tbody tr {
-  transition: background 0.2s ease, transform 0.2s ease;
-}
-
-.polished-data-table tbody tr:hover {
-  background: #f8fafc;
-}
-
-.dark .polished-data-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.table-cell-text {
-  font-weight: 650;
-}
-
-.actions-head {
-  text-align: center !important;
-}
-
-.table-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-wrap: nowrap;
-}
-
-.action-btn {
-  border: 0;
-  outline: none;
-  cursor: pointer;
-  padding: 10px 14px;
-  border-radius: 14px;
-  font-weight: 900;
-  font-size: 13px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-}
-
-.action-btn:hover {
-  transform: translateY(-1px);
-}
-
-.view-action {
-  background: #f1f5f9;
-  color: #020617;
-}
-
-.edit-action {
-  background: #eef6ff;
-  color: #075985;
-}
-
-.delete-action {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.dark .view-action {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-}
-
-.dark .edit-action {
-  background: rgba(56, 189, 248, 0.18);
-  color: #7dd3fc;
-}
-
-.dark .delete-action {
-  background: rgba(248, 113, 113, 0.18);
-  color: #fecaca;
-}
-
-.empty-state-box {
-  min-height: 220px;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  padding: 42px 20px;
-}
-
-.empty-state-icon {
-  width: 70px;
-  height: 70px;
-  border-radius: 24px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 14px;
-  font-size: 32px;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-  box-shadow: 0 16px 30px rgba(37, 99, 235, 0.25);
-}
-
-.empty-state-box h3 {
-  margin: 0;
-  font-size: 22px;
-  color: #0f172a;
-}
-
-.empty-state-box p {
-  max-width: 520px;
-  margin: 8px auto 0;
-  color: #64748b;
-  line-height: 1.6;
-}
-
-.dark .empty-state-box h3 {
-  color: #f8fafc;
-}
-
-.dark .empty-state-box p {
-  color: #cbd5e1;
-}
-
-.table-loading-state {
-  min-height: 280px;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  padding: 36px 20px;
-}
-
-.loader-orb {
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  border: 6px solid #dbeafe;
-  border-top-color: #2563eb;
-  animation: spinLoader 1s linear infinite;
-  margin-bottom: 14px;
-}
-
-.table-loading-state h3 {
-  margin: 0;
-  font-size: 22px;
-  color: #0f172a;
-}
-
-.table-loading-state p {
-  margin: 8px 0 18px;
-  color: #64748b;
-}
-
-.dark .table-loading-state h3 {
-  color: #f8fafc;
-}
-
-.dark .table-loading-state p {
-  color: #cbd5e1;
-}
-
-.skeleton-table {
-  width: min(720px, 100%);
-  display: grid;
-  gap: 10px;
-}
-
-.skeleton-row {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr 0.8fr 0.7fr;
-  gap: 12px;
-}
-
-.skeleton-row span {
-  height: 14px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #e2e8f0, #f8fafc, #e2e8f0);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-
-.dark .skeleton-row span {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.08),
-    rgba(255, 255, 255, 0.18),
-    rgba(255, 255, 255, 0.08)
+function DashboardPage({ admin, adminRole, dashboardData, counts, data, setActivePage }) {
+  const riskDistribution = dashboardData.riskDistribution || {
+    normal: 0,
+    low: 0,
+    medium: 0,
+    high: 0,
+  };
+
+  const cards = [
+    ["Total Admins", dashboardData.totalAdmins || counts.admin, "Admin user accounts", "🛡️"],
+    ["Total Customers", dashboardData.totalCustomers || counts.customer, "Customer records", "👥"],
+    ["Total Employees", dashboardData.totalEmployees || counts.employee, "Bank staff records", "👨‍💼"],
+    ["Total Branches", dashboardData.totalBranches || counts.branch, "Operational branches", "🏢"],
+    ["Total Loans", dashboardData.totalLoans || counts.loan, "Loan records", "💰"],
+    ["AI Risk Alerts", dashboardData.aiRiskAlerts || 0, "Fraud/risk monitoring", "🤖"],
+  ];
+
+  const moneyCards = [
+    ["Customer Balance", dashboardData.totalBalance || "₹0", "Total customer balance"],
+    ["Branch Balance", dashboardData.branchBalance || "₹0", "Total branch balance"],
+    ["Loan Amount", dashboardData.totalLoanAmount || "₹0", "Total loan value"],
+    ["Transaction Volume", dashboardData.transactionVolume || "₹0", "Total transaction value"],
+  ];
+
+  const recentTransactions =
+    dashboardData.recentTransactions ||
+    (data.transaction || []).slice(0, 5);
+
+  return (
+    <>
+      <div style={styles.pageHeader}>
+        <div>
+          <h1 style={styles.pageTitle}>Admin Dashboard</h1>
+          <p style={styles.pageText}>
+            Welcome {admin.name || "Admin"} — Role: {adminRole}
+          </p>
+        </div>
+
+        <button style={styles.primaryBtn} onClick={() => setActivePage("customer")}>
+          View Customers
+        </button>
+      </div>
+
+      <div style={styles.statsGrid}>
+        {cards.map(([title, value, subtitle, icon]) => (
+          <div style={styles.statCard} key={title}>
+            <div style={styles.statIcon}>{icon}</div>
+            <div>
+              <p style={styles.statLabel}>{title}</p>
+              <h2 style={styles.statValue}>{value}</h2>
+              <span style={styles.statSub}>{subtitle}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={styles.moneyGrid}>
+        {moneyCards.map(([title, value, subtitle]) => (
+          <div style={styles.moneyCard} key={title}>
+            <p>{title}</p>
+            <h2>{value}</h2>
+            <span>{subtitle}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={styles.twoGrid}>
+        <div style={styles.panel}>
+          <h3>AI Risk Distribution</h3>
+
+          {["normal", "low", "medium", "high"].map((key) => (
+            <div key={key} style={styles.riskRow}>
+              <div style={styles.riskTop}>
+                <strong>{key.toUpperCase()}</strong>
+                <span>{riskDistribution[key] || 0}</span>
+              </div>
+              <div style={styles.riskTrack}>
+                <div
+                  style={{
+                    ...styles.riskFill,
+                    width: `${Math.min((riskDistribution[key] || 0) * 10 + 5, 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={styles.panel}>
+          <h3>Recent Transactions</h3>
+
+          {recentTransactions.length === 0 ? (
+            <p>No recent transactions found.</p>
+          ) : (
+            <div style={styles.activityList}>
+              {recentTransactions.map((item, index) => (
+                <div style={styles.activityItem} key={item.id || item._id || index}>
+                  <strong>{item.customer || item.description || "Transaction"}</strong>
+                  <p>
+                    {item.type || "-"} • {item.amount || "₹0"} • {item.date || ""}
+                  </p>
+                  <Badge value={item.risk || item.status || "Normal"} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
-  background-size: 200% 100%;
 }
 
-@keyframes spinLoader {
-  to {
-    transform: rotate(360deg);
-  }
+function EntityPage({ config, rows, search, loading, onAdd, onView, onEdit, onDelete }) {
+  const filteredRows = rows.filter((row) =>
+    JSON.stringify(row).toLowerCase().includes(search.toLowerCase())
+  );
+
+  const exportCsv = () => {
+    if (filteredRows.length === 0) {
+      alert("No records to export");
+      return;
+    }
+
+    const headers = config.columns.map(([, label]) => label);
+    const csvRows = [
+      headers.join(","),
+      ...filteredRows.map((row) =>
+        config.columns
+          .map(([key]) => `"${String(row[key] ?? "").replace(/"/g, '""')}"`)
+          .join(",")
+      ),
+    ];
+
+    const blob = new Blob([csvRows.join("\n")], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${config.pageTitle.replace(/\s+/g, "_").toLowerCase()}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  return (
+    <>
+      <div style={styles.pageHeader}>
+        <div>
+          <h1 style={styles.pageTitle}>{config.pageTitle}</h1>
+          <p style={styles.pageText}>Manage {config.title.toLowerCase()} records securely.</p>
+        </div>
+
+        <div style={styles.buttonRow}>
+          <button style={styles.secondaryBtn} onClick={exportCsv}>
+            Export CSV
+          </button>
+
+          {config.buttonText && (
+            <button style={styles.primaryBtn} onClick={onAdd}>
+              {config.buttonText}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div style={styles.tableCard}>
+        {loading ? (
+          <div style={styles.loadingBox}>Loading records...</div>
+        ) : (
+          <div style={styles.tableWrap}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  {config.columns.map(([key, label]) => (
+                    <th style={styles.th} key={key}>
+                      {label}
+                    </th>
+                  ))}
+                  <th style={styles.th}>Actions</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredRows.length === 0 ? (
+                  <tr>
+                    <td style={styles.emptyCell} colSpan={config.columns.length + 1}>
+                      No records found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRows.map((row, index) => (
+                    <tr key={row.id || row._id || index}>
+                      {config.columns.map(([key]) => (
+                        <td style={styles.td} key={key}>
+                          {["status", "kyc", "risk"].includes(key) ? (
+                            <Badge value={row[key]} />
+                          ) : (
+                            String(row[key] ?? "-")
+                          )}
+                        </td>
+                      ))}
+
+                      <td style={styles.td}>
+                        <div style={styles.actions}>
+                          <button style={styles.viewBtn} onClick={() => onView(row)}>
+                            View
+                          </button>
+                          <button style={styles.editBtn} onClick={() => onEdit(row)}>
+                            Edit
+                          </button>
+                          <button style={styles.deleteBtn} onClick={() => onDelete(row)}>
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </>
+  );
 }
 
-@keyframes shimmer {
-  to {
-    background-position: -200% 0;
-  }
+function AuditLogsPage({ rows, search, loading, onRefresh, onClear }) {
+  const filteredRows = rows.filter((row) =>
+    JSON.stringify(row).toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <>
+      <div style={styles.pageHeader}>
+        <div>
+          <h1 style={styles.pageTitle}>Audit Logs</h1>
+          <p style={styles.pageText}>Track admin actions and security events.</p>
+        </div>
+
+        <div style={styles.buttonRow}>
+          <button style={styles.secondaryBtn} onClick={onRefresh}>
+            Refresh
+          </button>
+          <button style={styles.deleteBtn} onClick={onClear}>
+            Clear Logs
+          </button>
+        </div>
+      </div>
+
+      <div style={styles.tableCard}>
+        {loading ? (
+          <div style={styles.loadingBox}>Loading audit logs...</div>
+        ) : (
+          <div style={styles.tableWrap}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  {[
+                    "Log ID",
+                    "Action",
+                    "Module",
+                    "Admin",
+                    "Email",
+                    "Role",
+                    "Description",
+                    "Status",
+                    "Date",
+                  ].map((head) => (
+                    <th style={styles.th} key={head}>
+                      {head}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredRows.length === 0 ? (
+                  <tr>
+                    <td style={styles.emptyCell} colSpan="9">
+                      No audit logs found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRows.map((row, index) => (
+                    <tr key={row.id || row._id || index}>
+                      <td style={styles.td}>{row.id || row._id || "-"}</td>
+                      <td style={styles.td}>{row.action || "-"}</td>
+                      <td style={styles.td}>{row.module || "-"}</td>
+                      <td style={styles.td}>{row.adminName || "-"}</td>
+                      <td style={styles.td}>{row.adminEmail || "-"}</td>
+                      <td style={styles.td}>{row.adminRole || "-"}</td>
+                      <td style={styles.td}>{row.description || "-"}</td>
+                      <td style={styles.td}>
+                        <Badge value={row.status || "Success"} />
+                      </td>
+                      <td style={styles.td}>
+                        {row.createdAt
+                          ? new Date(row.createdAt).toLocaleString("en-IN")
+                          : "-"}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </>
+  );
 }
 
-@media (max-width: 800px) {
-  .table-actions {
-    justify-content: flex-start;
-  }
+function AIInsights({ transactions, onRefresh, onReviewTransactions }) {
+  const riskyTransactions = transactions.filter((transaction) => {
+    const risk = String(transaction.risk || "").toLowerCase();
+    const status = String(transaction.status || "").toLowerCase();
 
-  .action-btn {
-    padding: 9px 12px;
-    font-size: 12px;
-  }
-}
-  /* ================================
-   PREMIUM DASHBOARD POLISH
-================================ */
+    return (
+      risk === "high" ||
+      risk === "medium" ||
+      status === "flagged" ||
+      status === "failed"
+    );
+  });
 
-.dashboard-page,
-.page-content {
-  animation: pageFadeIn 0.35s ease;
-}
+  return (
+    <>
+      <div style={styles.pageHeader}>
+        <div>
+          <h1 style={styles.pageTitle}>AI Insights</h1>
+          <p style={styles.pageText}>
+            AI-powered fraud and risk monitoring for transactions.
+          </p>
+        </div>
 
-.dashboard-hero,
-.dashboard-header,
-.page-hero {
-  position: relative;
-  overflow: hidden;
-  border-radius: 28px;
-  padding: 28px;
-  margin-bottom: 24px;
-  background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.22), transparent 34%),
-    radial-gradient(circle at top right, rgba(6, 182, 212, 0.18), transparent 32%),
-    linear-gradient(135deg, #071630 0%, #102653 48%, #07111f 100%);
-  color: #ffffff;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
+        <div style={styles.buttonRow}>
+          <button style={styles.secondaryBtn} onClick={onRefresh}>
+            Refresh
+          </button>
+          <button style={styles.primaryBtn} onClick={onReviewTransactions}>
+            Open Transactions
+          </button>
+        </div>
+      </div>
 
-.dashboard-hero::before,
-.dashboard-header::before,
-.page-hero::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.08), transparent),
-    radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.14), transparent 14%);
-  pointer-events: none;
-}
+      <div style={styles.statsGrid}>
+        <div style={styles.statCard}>
+          <div style={styles.statIcon}>🚨</div>
+          <div>
+            <p style={styles.statLabel}>Risky Transactions</p>
+            <h2 style={styles.statValue}>{riskyTransactions.length}</h2>
+            <span style={styles.statSub}>High / medium / flagged</span>
+          </div>
+        </div>
+      </div>
 
-.dashboard-hero h1,
-.dashboard-header h1,
-.page-hero h1 {
-  position: relative;
-  font-size: clamp(30px, 4vw, 48px);
-  font-weight: 950;
-  letter-spacing: -0.04em;
-  margin: 0 0 8px;
-  color: #ffffff;
-}
-
-.dashboard-hero p,
-.dashboard-header p,
-.page-hero p {
-  position: relative;
-  max-width: 760px;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 16px;
-  line-height: 1.6;
+      {riskyTransactions.length === 0 ? (
+        <div style={styles.panel}>
+          <h3>No risky transactions found</h3>
+          <p>Add high-risk transactions to see AI insights here.</p>
+        </div>
+      ) : (
+        <div style={styles.twoGrid}>
+          {riskyTransactions.map((transaction, index) => (
+            <div style={styles.panel} key={transaction.id || transaction._id || index}>
+              <h3>{transaction.customer || "Transaction"}</h3>
+              <p>Account: {transaction.accountNumber || "-"}</p>
+              <p>Amount: {transaction.amount || "₹0"}</p>
+              <p>Type: {transaction.type || "-"}</p>
+              <Badge value={transaction.risk || transaction.status} />
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
-.stats-grid,
-.dashboard-grid,
-.summary-grid,
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 18px;
-  margin-bottom: 24px;
+function SettingsPage({ dark, setDark, fontSize, setFontSize, admin, onLogout }) {
+  return (
+    <>
+      <div style={styles.pageHeader}>
+        <div>
+          <h1 style={styles.pageTitle}>Settings</h1>
+          <p style={styles.pageText}>Appearance, profile, and account settings.</p>
+        </div>
+      </div>
+
+      <div style={styles.twoGrid}>
+        <div style={styles.panel}>
+          <h3>Admin Profile</h3>
+          <p>Name: {admin.name || "Admin"}</p>
+          <p>Email: {admin.email || "-"}</p>
+          <p>Role: {normalizeAdminRole(admin.role)}</p>
+        </div>
+
+        <div style={styles.panel}>
+          <h3>Appearance</h3>
+          <button style={styles.primaryBtn} onClick={() => setDark(!dark)}>
+            {dark ? "Switch Light Mode" : "Switch Dark Mode"}
+          </button>
+        </div>
+
+        <div style={styles.panel}>
+          <h3>Font Size</h3>
+          <div style={styles.buttonRow}>
+            {["Small", "Normal", "Large"].map((size) => (
+              <button
+                key={size}
+                style={fontSize === size ? styles.primaryBtn : styles.secondaryBtn}
+                onClick={() => setFontSize(size)}
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={styles.panel}>
+          <h3>Security</h3>
+          <button style={styles.deleteBtn} onClick={onLogout}>
+            Logout
+          </button>
+        </div>
+      </div>
+    </>
+  );
 }
 
-.stat-card,
-.dashboard-card,
-.summary-card,
-.kpi-card,
-.metric-card {
-  position: relative;
-  overflow: hidden;
-  border-radius: 26px;
-  padding: 22px;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.92));
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
-  transition:
-    transform 0.22s ease,
-    box-shadow 0.22s ease,
-    border-color 0.22s ease;
+function EntityModal({ config, mode, item, onClose, onSave }) {
+  const [form, setForm] = useState(item || {});
+  const viewOnly = mode === "view";
+
+  const changeValue = (field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      [field.name]: field.type === "number" ? Number(value) : value,
+    }));
+  };
+
+  const submit = (event) => {
+    event.preventDefault();
+
+    for (const field of config.fields) {
+      const required = field.required || (mode === "add" && field.requiredOnAdd);
+      if (required && !String(form[field.name] || "").trim()) {
+        alert(`Please fill ${field.label}`);
+        return;
+      }
+    }
+
+    onSave(form);
+  };
+
+  return (
+    <div style={styles.modalOverlay}>
+      <div style={styles.modal}>
+        <div style={styles.modalTop}>
+          <div>
+            <h2 style={styles.modalTitle}>
+              {viewOnly
+                ? `View ${config.title}`
+                : mode === "add"
+                ? `Add ${config.title}`
+                : `Edit ${config.title}`}
+            </h2>
+            <p style={styles.pageText}>FinSecure AI record details</p>
+          </div>
+
+          <button style={styles.closeBtn} onClick={onClose}>
+            ×
+          </button>
+        </div>
+
+        {viewOnly ? (
+          <>
+            <div style={styles.detailGrid}>
+              {[...config.columns, ...config.fields.map((f) => [f.name, f.label])]
+                .filter(([key], index, arr) => arr.findIndex(([k]) => k === key) === index)
+                .filter(([key]) => key !== "password")
+                .map(([key, label]) => (
+                  <div style={styles.detailItem} key={key}>
+                    <span>{label}</span>
+                    <strong>
+                      {["status", "kyc", "risk"].includes(key) ? (
+                        <Badge value={form[key]} />
+                      ) : (
+                        String(form[key] ?? "-")
+                      )}
+                    </strong>
+                  </div>
+                ))}
+            </div>
+
+            <div style={styles.modalActions}>
+              <button style={styles.secondaryBtn} onClick={onClose}>
+                Close
+              </button>
+            </div>
+          </>
+        ) : (
+          <form onSubmit={submit}>
+            <div style={styles.formGrid}>
+              {mode !== "add" && (
+                <label style={styles.formLabel}>
+                  ID
+                  <input
+                    style={styles.input}
+                    value={form.id || form._id || ""}
+                    disabled
+                  />
+                </label>
+              )}
+
+              {config.fields.map((field) => (
+                <label style={styles.formLabel} key={field.name}>
+                  {field.label}
+                  {field.required || (mode === "add" && field.requiredOnAdd)
+                    ? " *"
+                    : ""}
+
+                  {field.type === "select" ? (
+                    <select
+                      style={styles.input}
+                      value={form[field.name] || field.defaultValue || ""}
+                      onChange={(e) => changeValue(field, e.target.value)}
+                    >
+                      {field.options.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      style={styles.input}
+                      type={field.type || "text"}
+                      value={form[field.name] ?? ""}
+                      placeholder={field.placeholder || ""}
+                      onChange={(e) => changeValue(field, e.target.value)}
+                    />
+                  )}
+                </label>
+              ))}
+            </div>
+
+            <div style={styles.modalActions}>
+              <button type="button" style={styles.secondaryBtn} onClick={onClose}>
+                Cancel
+              </button>
+              <button style={styles.primaryBtn}>Save {config.title}</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
 }
 
-.stat-card::before,
-.dashboard-card::before,
-.summary-card::before,
-.kpi-card::before,
-.metric-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at top right, rgba(37, 99, 235, 0.12), transparent 38%),
-    linear-gradient(135deg, rgba(6, 182, 212, 0.08), transparent 42%);
-  opacity: 0;
-  transition: opacity 0.22s ease;
-}
+const styles = {
+  app: {
+    minHeight: "100vh",
+    display: "flex",
+    background: "#f4f7fb",
+    color: "#0f172a",
+    fontFamily: "Inter, Arial, sans-serif",
+  },
 
-.stat-card:hover,
-.dashboard-card:hover,
-.summary-card:hover,
-.kpi-card:hover,
-.metric-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 26px 56px rgba(15, 23, 42, 0.14);
-  border-color: rgba(37, 99, 235, 0.28);
-}
+  appDark: {
+    background: "#020617",
+    color: "#f8fafc",
+  },
 
-.stat-card:hover::before,
-.dashboard-card:hover::before,
-.summary-card:hover::before,
-.kpi-card:hover::before,
-.metric-card:hover::before {
-  opacity: 1;
-}
+  sidebar: {
+    width: "280px",
+    minHeight: "100vh",
+    background: "linear-gradient(180deg, #020617, #071326)",
+    color: "#ffffff",
+    padding: "24px",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    gap: "22px",
+    borderRight: "1px solid rgba(247,210,139,0.28)",
+  },
 
-.stat-icon,
-.card-icon,
-.metric-icon,
-.kpi-icon {
-  position: relative;
-  width: 54px;
-  height: 54px;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 16px;
-  font-size: 24px;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-  color: #ffffff;
-  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.28);
-}
+  brand: {
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+  },
 
-.stat-card h3,
-.dashboard-card h3,
-.summary-card h3,
-.kpi-card h3,
-.metric-card h3 {
-  position: relative;
-  margin: 0 0 6px;
-  color: #475569;
-  font-size: 14px;
-  font-weight: 850;
-  text-transform: uppercase;
-  letter-spacing: 0.035em;
-}
+  brandLogo: {
+    width: "54px",
+    height: "54px",
+    borderRadius: "16px",
+    border: "2px solid #f7d28b",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#f7d28b",
+    fontSize: "26px",
+    fontWeight: "900",
+    fontFamily: "Georgia, serif",
+  },
 
-.stat-card .value,
-.dashboard-card .value,
-.summary-card .value,
-.kpi-card .value,
-.metric-card .value,
-.stat-value,
-.card-value,
-.metric-value,
-.kpi-value {
-  position: relative;
-  color: #020617;
-  font-size: clamp(28px, 4vw, 40px);
-  font-weight: 950;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  margin-top: 8px;
-}
+  brandTitle: {
+    margin: 0,
+    fontSize: "22px",
+  },
 
-.stat-card p,
-.dashboard-card p,
-.summary-card p,
-.kpi-card p,
-.metric-card p,
-.stat-subtitle,
-.card-subtitle,
-.metric-subtitle {
-  position: relative;
-  color: #64748b;
-  font-size: 14px;
-  margin: 10px 0 0;
-  line-height: 1.55;
-}
+  brandSub: {
+    color: "#94a3b8",
+    fontSize: "13px",
+  },
 
-.dashboard-section,
-.chart-card,
-.insight-card,
-.recent-card,
-.activity-card {
-  border-radius: 28px;
-  padding: 24px;
-  background: #ffffff;
-  border: 1px solid #dbe4f0;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
-  margin-bottom: 22px;
-}
+  nav: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
 
-.dashboard-section h2,
-.chart-card h2,
-.insight-card h2,
-.recent-card h2,
-.activity-card h2 {
-  margin: 0 0 14px;
-  font-size: 22px;
-  font-weight: 950;
-  color: #0f172a;
-  letter-spacing: -0.03em;
-}
+  navButton: {
+    width: "100%",
+    padding: "13px 14px",
+    borderRadius: "14px",
+    border: "1px solid transparent",
+    background: "transparent",
+    color: "#cbd5e1",
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    fontWeight: "800",
+    cursor: "pointer",
+    textAlign: "left",
+  },
 
-.dashboard-mini-badge,
-.trend-badge,
-.growth-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 11px;
-  border-radius: 999px;
-  background: #dcfce7;
-  color: #166534;
-  font-size: 12px;
-  font-weight: 900;
-}
+  navButtonActive: {
+    width: "100%",
+    padding: "13px 14px",
+    borderRadius: "14px",
+    border: "1px solid rgba(247,210,139,0.65)",
+    background: "rgba(247,210,139,0.14)",
+    color: "#f7d28b",
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    fontWeight: "900",
+    cursor: "pointer",
+    textAlign: "left",
+  },
 
-/* Dark mode dashboard polish */
+  premiumBox: {
+    marginTop: "auto",
+    padding: "18px",
+    borderRadius: "18px",
+    background: "rgba(247,210,139,0.12)",
+    border: "1px solid rgba(247,210,139,0.48)",
+    color: "#f7d28b",
+  },
 
-.dark .dashboard-hero,
-.dark .dashboard-header,
-.dark .page-hero {
-  background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.25), transparent 35%),
-    radial-gradient(circle at top right, rgba(34, 211, 238, 0.18), transparent 34%),
-    linear-gradient(135deg, #020617 0%, #0f172a 54%, #111827 100%);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
-}
+  premiumText: {
+    margin: "0 0 8px",
+    color: "#e5e7eb",
+    fontSize: "13px",
+  },
 
-.dark .stat-card,
-.dark .dashboard-card,
-.dark .summary-card,
-.dark .kpi-card,
-.dark .metric-card {
-  background:
-    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.86));
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.32);
-}
+  main: {
+    flex: 1,
+    minWidth: 0,
+  },
 
-.dark .stat-card h3,
-.dark .dashboard-card h3,
-.dark .summary-card h3,
-.dark .kpi-card h3,
-.dark .metric-card h3 {
-  color: #cbd5e1;
-}
+  topbar: {
+    height: "84px",
+    padding: "0 32px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    background: "#ffffff",
+    borderBottom: "1px solid #e5e7eb",
+  },
 
-.dark .stat-card .value,
-.dark .dashboard-card .value,
-.dark .summary-card .value,
-.dark .kpi-card .value,
-.dark .metric-card .value,
-.dark .stat-value,
-.dark .card-value,
-.dark .metric-value,
-.dark .kpi-value {
-  color: #ffffff;
-}
+  searchBox: {
+    width: "min(560px, 100%)",
+    height: "46px",
+    borderRadius: "16px",
+    border: "1px solid #dbe3ef",
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    padding: "0 16px",
+    background: "#f8fafc",
+  },
 
-.dark .stat-card p,
-.dark .dashboard-card p,
-.dark .summary-card p,
-.dark .kpi-card p,
-.dark .metric-card p,
-.dark .stat-subtitle,
-.dark .card-subtitle,
-.dark .metric-subtitle {
-  color: #94a3b8;
-}
+  searchInput: {
+    flex: 1,
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    fontSize: "15px",
+  },
 
-.dark .dashboard-section,
-.dark .chart-card,
-.dark .insight-card,
-.dark .recent-card,
-.dark .activity-card {
-  background: rgba(15, 23, 42, 0.92);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.34);
-}
+  adminBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+  },
 
-.dark .dashboard-section h2,
-.dark .chart-card h2,
-.dark .insight-card h2,
-.dark .recent-card h2,
-.dark .activity-card h2 {
-  color: #f8fafc;
-}
+  adminRole: {
+    margin: 0,
+    color: "#64748b",
+    fontSize: "13px",
+  },
 
-@keyframes pageFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
+  avatar: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "50%",
+    background: "#071326",
+    color: "#f7d28b",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: "900",
+  },
 
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-  /* ================================
-   REPORTS + FINAL PAGE POLISH
-================================ */
+  logoutBtn: {
+    border: "none",
+    background: "#ef4444",
+    color: "#ffffff",
+    padding: "10px 14px",
+    borderRadius: "12px",
+    fontWeight: "800",
+    cursor: "pointer",
+  },
 
-.page-header {
-  position: relative;
-  overflow: hidden;
-  border-radius: 26px;
-  padding: 24px;
-  background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.14), transparent 32%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
-  border: 1px solid rgba(203, 213, 225, 0.85);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
-}
+  content: {
+    padding: "34px",
+  },
 
-.page-header h1 {
-  font-size: clamp(28px, 3vw, 40px);
-  font-weight: 950;
-  letter-spacing: -0.04em;
-  color: #020617;
-}
+  notice: {
+    margin: "18px 34px 0",
+    padding: "14px 18px",
+    borderRadius: "14px",
+    background: "#fff7ed",
+    border: "1px solid #fed7aa",
+    color: "#9a3412",
+    fontWeight: "700",
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "14px",
+  },
 
-.page-header p {
-  color: #64748b;
-  font-size: 15px;
-  line-height: 1.6;
-}
+  noticeClose: {
+    border: "none",
+    background: "transparent",
+    fontSize: "20px",
+    cursor: "pointer",
+    color: "#9a3412",
+  },
 
-.filter-card {
-  border-radius: 24px;
-  padding: 20px;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.07);
-}
+  pageHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "18px",
+    marginBottom: "24px",
+  },
 
-.filter-header h3 {
-  font-size: 20px;
-  font-weight: 950;
-  color: #0f172a;
-  letter-spacing: -0.03em;
-}
+  pageTitle: {
+    margin: 0,
+    fontSize: "34px",
+    color: "#0f172a",
+  },
 
-.filter-header p {
-  color: #64748b;
-  line-height: 1.5;
-}
+  pageText: {
+    margin: "8px 0 0",
+    color: "#64748b",
+  },
 
-.filter-grid label {
-  font-weight: 850;
-  color: #334155;
-}
+  buttonRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
 
-.filter-grid select,
-.form-grid input,
-.form-grid select,
-.single-form input {
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-}
+  primaryBtn: {
+    border: "none",
+    background: "linear-gradient(135deg, #f7d28b, #d4af37)",
+    color: "#071326",
+    padding: "12px 18px",
+    borderRadius: "12px",
+    fontWeight: "900",
+    cursor: "pointer",
+  },
 
-.filter-grid select:focus,
-.form-grid input:focus,
-.form-grid select:focus,
-.single-form input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
-}
+  secondaryBtn: {
+    border: "1px solid #cbd5e1",
+    background: "#ffffff",
+    color: "#0f172a",
+    padding: "12px 18px",
+    borderRadius: "12px",
+    fontWeight: "800",
+    cursor: "pointer",
+  },
 
-.filter-result {
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  font-weight: 700;
-}
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+    gap: "18px",
+    marginBottom: "22px",
+  },
 
-.primary-btn,
-.secondary-btn,
-.danger-main-btn,
-.top-logout {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-}
+  statCard: {
+    padding: "22px",
+    borderRadius: "22px",
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 16px 35px rgba(15,23,42,0.08)",
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+  },
 
-.primary-btn:hover,
-.secondary-btn:hover,
-.danger-main-btn:hover,
-.top-logout:hover {
-  transform: translateY(-1px);
-}
+  statIcon: {
+    width: "56px",
+    height: "56px",
+    borderRadius: "18px",
+    background: "#eef4ff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "26px",
+  },
 
-.primary-btn {
-  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
-}
+  statLabel: {
+    margin: 0,
+    color: "#64748b",
+    fontWeight: "800",
+  },
 
-.secondary-btn:hover {
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
-}
+  statValue: {
+    margin: "6px 0",
+    fontSize: "30px",
+  },
 
-.table-card {
-  border-radius: 26px;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
-}
+  statSub: {
+    color: "#94a3b8",
+    fontSize: "13px",
+  },
 
-.modal {
-  box-shadow: 0 30px 90px rgba(2, 6, 23, 0.38);
-}
+  moneyGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gap: "18px",
+    marginBottom: "22px",
+  },
 
-.modal-top {
-  padding-bottom: 14px;
-  border-bottom: 1px solid #e2e8f0;
-}
+  moneyCard: {
+    padding: "22px",
+    borderRadius: "22px",
+    background: "linear-gradient(135deg, #071326, #0f172a)",
+    color: "#ffffff",
+    border: "1px solid rgba(247,210,139,0.35)",
+  },
 
-.modal-top h2 {
-  font-size: 26px;
-  font-weight: 950;
-  letter-spacing: -0.035em;
-}
+  twoGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+    gap: "20px",
+  },
 
-.modal-top p {
-  margin-top: 6px;
-  color: #64748b;
-}
+  panel: {
+    padding: "24px",
+    borderRadius: "22px",
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 16px 35px rgba(15,23,42,0.08)",
+  },
 
-.close-btn {
-  background: #f1f5f9;
-  color: #0f172a;
-  transition: transform 0.2s ease, background 0.2s ease;
-}
+  riskRow: {
+    marginBottom: "16px",
+  },
 
-.close-btn:hover {
-  transform: rotate(90deg);
-  background: #e2e8f0;
-}
+  riskTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginBottom: "8px",
+  },
 
-/* Dark mode final polish */
+  riskTrack: {
+    height: "10px",
+    borderRadius: "999px",
+    background: "#e5e7eb",
+    overflow: "hidden",
+  },
 
-.dark .page-header,
-.dark .filter-card {
-  background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.18), transparent 34%),
-    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.9));
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
-}
+  riskFill: {
+    height: "100%",
+    borderRadius: "999px",
+    background: "linear-gradient(90deg, #22c55e, #f59e0b)",
+  },
 
-.dark .page-header h1,
-.dark .filter-header h3 {
-  color: #f8fafc;
-}
+  activityList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
 
-.dark .page-header p,
-.dark .filter-header p {
-  color: #cbd5e1;
-}
+  activityItem: {
+    padding: "14px",
+    borderRadius: "14px",
+    background: "#f8fafc",
+    border: "1px solid #e5e7eb",
+  },
 
-.dark .filter-grid label {
-  color: #e5e7eb;
-}
+  tableCard: {
+    borderRadius: "22px",
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 16px 35px rgba(15,23,42,0.08)",
+    overflow: "hidden",
+  },
 
-.dark .filter-result {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
-  color: #cbd5e1;
-}
+  tableWrap: {
+    overflowX: "auto",
+  },
 
-.dark .modal-top {
-  border-bottom-color: rgba(255, 255, 255, 0.1);
-}
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+  },
 
-.dark .modal-top p {
-  color: #cbd5e1;
-}
+  th: {
+    textAlign: "left",
+    padding: "15px",
+    background: "#f8fafc",
+    color: "#64748b",
+    borderBottom: "1px solid #e5e7eb",
+    fontSize: "13px",
+    whiteSpace: "nowrap",
+  },
 
-.dark .close-btn {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
-}
+  td: {
+    padding: "15px",
+    borderBottom: "1px solid #f1f5f9",
+    color: "#0f172a",
+    fontSize: "14px",
+    whiteSpace: "nowrap",
+  },
 
-.dark .close-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
-}
-`;
+  emptyCell: {
+    padding: "30px",
+    textAlign: "center",
+    color: "#64748b",
+  },
+
+  loadingBox: {
+    padding: "40px",
+    textAlign: "center",
+    color: "#2563eb",
+    fontWeight: "900",
+  },
+
+  actions: {
+    display: "flex",
+    gap: "8px",
+  },
+
+  viewBtn: {
+    border: "none",
+    background: "#2563eb",
+    color: "#ffffff",
+    padding: "8px 12px",
+    borderRadius: "10px",
+    fontWeight: "800",
+    cursor: "pointer",
+  },
+
+  editBtn: {
+    border: "none",
+    background: "#f59e0b",
+    color: "#ffffff",
+    padding: "8px 12px",
+    borderRadius: "10px",
+    fontWeight: "800",
+    cursor: "pointer",
+  },
+
+  deleteBtn: {
+    border: "none",
+    background: "#ef4444",
+    color: "#ffffff",
+    padding: "8px 12px",
+    borderRadius: "10px",
+    fontWeight: "800",
+    cursor: "pointer",
+  },
+
+  badgeGood: {
+    display: "inline-flex",
+    padding: "6px 10px",
+    borderRadius: "999px",
+    background: "#dcfce7",
+    color: "#166534",
+    fontWeight: "900",
+    fontSize: "12px",
+  },
+
+  badgeWarn: {
+    display: "inline-flex",
+    padding: "6px 10px",
+    borderRadius: "999px",
+    background: "#fef3c7",
+    color: "#92400e",
+    fontWeight: "900",
+    fontSize: "12px",
+  },
+
+  badgeBad: {
+    display: "inline-flex",
+    padding: "6px 10px",
+    borderRadius: "999px",
+    background: "#fee2e2",
+    color: "#991b1b",
+    fontWeight: "900",
+    fontSize: "12px",
+  },
+
+  badgeNormal: {
+    display: "inline-flex",
+    padding: "6px 10px",
+    borderRadius: "999px",
+    background: "#e0f2fe",
+    color: "#075985",
+    fontWeight: "900",
+    fontSize: "12px",
+  },
+
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(2,8,23,0.72)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "24px",
+    zIndex: 99999,
+  },
+
+  modal: {
+    width: "min(920px, 100%)",
+    maxHeight: "90vh",
+    overflowY: "auto",
+    borderRadius: "24px",
+    background: "#ffffff",
+    color: "#0f172a",
+    padding: "26px",
+    boxShadow: "0 30px 100px rgba(0,0,0,0.5)",
+  },
+
+  modalTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "18px",
+    marginBottom: "22px",
+  },
+
+  modalTitle: {
+    margin: 0,
+    fontSize: "26px",
+  },
+
+  closeBtn: {
+    width: "42px",
+    height: "42px",
+    borderRadius: "50%",
+    border: "none",
+    background: "#f1f5f9",
+    fontSize: "24px",
+    cursor: "pointer",
+  },
+
+  formGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gap: "16px",
+  },
+
+  formLabel: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    color: "#334155",
+    fontWeight: "800",
+  },
+
+  input: {
+    width: "100%",
+    height: "44px",
+    borderRadius: "12px",
+    border: "1px solid #cbd5e1",
+    padding: "0 12px",
+    boxSizing: "border-box",
+    outline: "none",
+  },
+
+  modalActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "12px",
+    marginTop: "22px",
+  },
+
+  detailGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: "14px",
+  },
+
+  detailItem: {
+    padding: "16px",
+    borderRadius: "14px",
+    background: "#f8fafc",
+    border: "1px solid #e5e7eb",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+
+  loginFallbackPage: {
+    minHeight: "100vh",
+    background: "linear-gradient(135deg, #020617, #071326)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "30px",
+    color: "#ffffff",
+    fontFamily: "Inter, Arial, sans-serif",
+  },
+
+  loginFallbackCard: {
+    width: "min(480px, 100%)",
+    padding: "40px",
+    borderRadius: "28px",
+    textAlign: "center",
+    background: "rgba(8,21,42,0.92)",
+    border: "1px solid rgba(247,210,139,0.55)",
+  },
+
+  logoCircle: {
+    width: "80px",
+    height: "80px",
+    borderRadius: "50%",
+    border: "2px solid #f7d28b",
+    color: "#f7d28b",
+    margin: "0 auto 20px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "28px",
+    fontWeight: "900",
+    fontFamily: "Georgia, serif",
+  },
+};
