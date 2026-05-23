@@ -22,8 +22,8 @@ export default function App() {
 function UnifiedLogin() {
   const [email, setEmail] = useState("admin@finsecure.ai");
   const [password, setPassword] = useState("admin123");
-const [showPassword, setShowPassword] = useState(false);
-const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const login = async (event) => {
@@ -34,18 +34,31 @@ const [error, setError] = useState("");
       setError("");
 
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ email, password }),
+});
 
-      const result = await response.json();
+let result = null;
+let rawText = "";
 
-      if (!response.ok) {
-        throw new Error(result.message || "Login failed");
-      }
+try {
+  rawText = await response.text();
+  result = rawText ? JSON.parse(rawText) : {};
+} catch {
+  throw new Error(
+    `Backend returned non-JSON response. Status: ${response.status}. Response: ${rawText.slice(
+      0,
+      120
+    )}`
+  );
+}
+
+if (!response.ok) {
+  throw new Error(result.message || `Login failed with status ${response.status}`);
+}
 
       const user = result.user || result.data;
       const token = result.token;
@@ -58,16 +71,16 @@ const [error, setError] = useState("");
 
       localStorage.clear();
 
-      if (
+      const isAdmin =
         role.includes("admin") ||
         role.includes("manager") ||
         role.includes("officer") ||
         role.includes("analyst") ||
-        role.includes("support")
-      ) {
+        role.includes("support");
+
+      if (isAdmin) {
         localStorage.setItem("finsecure_admin", JSON.stringify(user));
         localStorage.setItem("finsecure_token", token);
-
         window.location.href = "/admin";
         return;
       }
@@ -119,25 +132,25 @@ const [error, setError] = useState("");
 
           <label style={styles.label}>Password</label>
 
-<div style={styles.passwordWrap}>
-  <input
-    style={styles.passwordInput}
-    value={password}
-    onChange={(e) => setPassword(e.target.value)}
-    placeholder="Enter password"
-    type={showPassword ? "text" : "password"}
-    required
-  />
+          <div style={styles.passwordWrap}>
+            <input
+              style={styles.passwordInput}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password"
+              type={showPassword ? "text" : "password"}
+              required
+            />
 
-  <button
-    type="button"
-    style={styles.eyeButton}
-    onClick={() => setShowPassword(!showPassword)}
-    title={showPassword ? "Hide password" : "Show password"}
-  >
-    {showPassword ? "🙈" : "👁️"}
-  </button>
-</div>
+            <button
+              type="button"
+              style={styles.eyeButton}
+              onClick={() => setShowPassword(!showPassword)}
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? "🙈" : "👁️"}
+            </button>
+          </div>
 
           {error && <div style={styles.error}>{error}</div>}
 
@@ -151,7 +164,10 @@ const [error, setError] = useState("");
             Create Customer Account
           </button>
 
-          <button style={styles.adminButton} onClick={() => (window.location.href = "/admin")}>
+          <button
+            style={styles.adminButton}
+            onClick={() => (window.location.href = "/admin")}
+          >
             Admin Direct Login
           </button>
         </div>
@@ -254,43 +270,44 @@ const styles = {
     fontSize: "15px",
     boxSizing: "border-box",
   },
+
   passwordWrap: {
-  width: "100%",
-  height: "52px",
-  marginBottom: "18px",
-  borderRadius: "14px",
-  border: "1px solid rgba(148,163,184,0.6)",
-  background: "rgba(15,23,42,0.72)",
-  display: "flex",
-  alignItems: "center",
-  overflow: "hidden",
-  boxSizing: "border-box",
-},
+    width: "100%",
+    height: "52px",
+    marginBottom: "18px",
+    borderRadius: "14px",
+    border: "1px solid rgba(148,163,184,0.6)",
+    background: "rgba(15,23,42,0.72)",
+    display: "flex",
+    alignItems: "center",
+    overflow: "hidden",
+    boxSizing: "border-box",
+  },
 
-passwordInput: {
-  flex: 1,
-  height: "100%",
-  padding: "0 16px",
-  border: "none",
-  outline: "none",
-  background: "transparent",
-  color: "#ffffff",
-  fontSize: "15px",
-  boxSizing: "border-box",
-},
+  passwordInput: {
+    flex: 1,
+    height: "100%",
+    padding: "0 16px",
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    color: "#ffffff",
+    fontSize: "15px",
+    boxSizing: "border-box",
+  },
 
-eyeButton: {
-  width: "54px",
-  height: "100%",
-  border: "none",
-  background: "rgba(247,210,139,0.08)",
-  color: "#f7d28b",
-  cursor: "pointer",
-  fontSize: "20px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-},
+  eyeButton: {
+    width: "54px",
+    height: "100%",
+    border: "none",
+    background: "rgba(247,210,139,0.08)",
+    color: "#f7d28b",
+    cursor: "pointer",
+    fontSize: "20px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   error: {
     background: "rgba(239,68,68,0.14)",
