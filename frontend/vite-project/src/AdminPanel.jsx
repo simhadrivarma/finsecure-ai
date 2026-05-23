@@ -2236,14 +2236,33 @@ export default function App() {
     [data]
   );
 
-  const logout = () => {
-    localStorage.removeItem("finsecure_admin");
-    localStorage.removeItem("finsecure_token");
+  const logout = (manual = false) => {
+  if (!manual) {
+    console.warn("Blocked automatic admin logout from API error");
+    return;
+  }
 
-    setAdmin(null);
-    setToken("");
-    setActivePage("dashboard");
-  };
+  localStorage.removeItem("finsecure_admin");
+  localStorage.removeItem("admin");
+  localStorage.removeItem("adminData");
+  localStorage.removeItem("loggedInAdmin");
+  localStorage.removeItem("currentUser");
+  localStorage.removeItem("user");
+
+  localStorage.removeItem("finsecure_token");
+  localStorage.removeItem("adminToken");
+  localStorage.removeItem("authToken");
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("token");
+
+  localStorage.removeItem("role");
+  localStorage.removeItem("userRole");
+  localStorage.removeItem("adminLoggedIn");
+  localStorage.removeItem("isAuthenticated");
+  localStorage.removeItem("isLoggedIn");
+
+  window.location.href = "/";
+};
 
   const loadEntity = async (type) => {
     try {
