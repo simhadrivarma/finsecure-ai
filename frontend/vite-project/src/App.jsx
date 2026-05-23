@@ -16,49 +16,73 @@ export default function App() {
     return <AdminPanel />;
   }
 
-  return <UnifiedLogin />;
+  return <UnifiedAuth />;
 }
 
-function UnifiedLogin() {
-  const [email, setEmail] = useState("admin@finsecure.ai");
-  const [password, setPassword] = useState("admin123");
-  const [showPassword, setShowPassword] = useState(false);
+function UnifiedAuth() {
+  const [mode, setMode] = useState("login");
+
+  const [loginEmail, setLoginEmail] = useState("admin@finsecure.ai");
+  const [loginPassword, setLoginPassword] = useState("admin123");
+
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+
+  const [registerForm, setRegisterForm] = useState({
+    name: "",
+    phone: "",
+    aadhaarNumber: "",
+    panNumber: "",
+    email: "",
+    password: "",
+    role: "customer",
+  });
+
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const login = async (event) => {
+  const saveCustomerSession = (user, token) => {
+    localStorage.clear();
+    localStorage.setItem("token", token);
+    localStorage.setItem("role", user.role || "customer");
+    localStorage.setItem("userName", user.name || user.customerName || "");
+    localStorage.setItem("userEmail", user.email || "");
+    localStorage.setItem("userPhone", user.phone || user.phoneNumber || "");
+    localStorage.setItem("userAadhaar", user.aadhaarNumber || "");
+    localStorage.setItem("userPan", user.panNumber || "");
+  };
+
+  const saveAdminSession = (user, token) => {
+    localStorage.clear();
+    localStorage.setItem("finsecure_admin", JSON.stringify(user));
+    localStorage.setItem("finsecure_token", token);
+  };
+
+  const handleLogin = async (event) => {
     event.preventDefault();
 
     try {
       setLoading(true);
       setError("");
+      setSuccess("");
 
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({ email, password }),
-});
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: loginEmail,
+          password: loginPassword,
+        }),
+      });
 
-let result = null;
-let rawText = "";
+      const result = await response.json();
 
-try {
-  rawText = await response.text();
-  result = rawText ? JSON.parse(rawText) : {};
-} catch {
-  throw new Error(
-    `Backend returned non-JSON response. Status: ${response.status}. Response: ${rawText.slice(
-      0,
-      120
-    )}`
-  );
-}
-
-if (!response.ok) {
-  throw new Error(result.message || `Login failed with status ${response.status}`);
-}
+      if (!response.ok) {
+        throw new Error(result.message || "Login failed");
+      }
 
       const user = result.user || result.data;
       const token = result.token;
@@ -69,41 +93,110 @@ if (!response.ok) {
 
       const role = String(user.role || "").toLowerCase();
 
-      localStorage.clear();
-
       const isAdmin =
         role.includes("admin") ||
         role.includes("manager") ||
         role.includes("officer") ||
         role.includes("analyst") ||
-        role.includes("support");
+        role.includes("support") ||
+        user.email === "admin@finsecure.ai";
 
       if (isAdmin) {
-        localStorage.setItem("finsecure_admin", JSON.stringify(user));
-        localStorage.setItem("finsecure_token", token);
+        saveAdminSession(user, token);
         window.location.href = "/admin";
         return;
       }
 
-      localStorage.setItem("token", token);
-      localStorage.setItem("role", user.role || "customer");
-      localStorage.setItem("userName", user.name || "");
-      localStorage.setItem("userEmail", user.email || "");
-      localStorage.setItem("userPhone", user.phone || "");
-      localStorage.setItem("userAadhaar", user.aadhaarNumber || "");
-      localStorage.setItem("userPan", user.panNumber || "");
-
+      saveCustomerSession(user, token);
       window.location.href = "/customer";
     } catch (err) {
-      setError(err.message || "Login failed");
+      setError(err.message || "Invalid email or password");
     } finally {
       setLoading(false);
     }
   };
 
-  const openCustomerRegister = () => {
-    localStorage.clear();
-    window.location.href = "/customer";
+  const handleRegister = async (event) => {
+    event.preventDefault();
+
+    try {
+      setLoading(true);
+      setError("");
+      setSuccess("");
+
+      if (!registerForm.name.trim()) {
+        throw new Error("Name is required");
+      }
+
+      if (!registerForm.email.trim()) {
+        throw new Error("Email is required");
+      }
+
+      if (!registerForm.password || registerForm.password.length < 6) {
+        throw new Error("Password must be at least 6 characters");
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: registerForm.name,
+          email: registerForm.email,
+          password: registerForm.password,
+          role: "customer",
+          phone: registerForm.phone,
+          aadhaarNumber: registerForm.aadhaarNumber,
+          panNumber: registerForm.panNumber,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Registration failed");
+      }
+
+      const user = result.user || result.data;
+      const token = result.token;
+
+      if (!user || !token) {
+        throw new Error("Invalid registration response from backend");
+      }
+
+      saveCustomerSession(user, token);
+
+      setSuccess("Customer registered successfully");
+      window.location.href = "/customer";
+    } catch (err) {
+      setError(err.message || "Registration failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateRegisterForm = (field, value) => {
+    setRegisterForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const openRegister = () => {
+    setMode("register");
+    setError("");
+    setSuccess("");
+  };
+
+  const openLogin = () => {
+    setMode("login");
+    setError("");
+    setSuccess("");
+  };
+
+  const openAdminDirect = () => {
+    window.location.href = "/admin";
   };
 
   return (
@@ -116,58 +209,141 @@ if (!response.ok) {
         <h1 style={styles.title}>FinSecure AI</h1>
 
         <p style={styles.subtitle}>
-          One secure login for Admin and Customer banking portals.
+          {mode === "login"
+            ? "One secure login for Admin and Customer banking portals."
+            : "Create your customer account securely."}
         </p>
 
-        <form onSubmit={login} style={styles.form}>
-          <label style={styles.label}>Email</label>
-          <input
-            style={styles.input}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter email"
-            type="email"
-            required
-          />
-
-          <label style={styles.label}>Password</label>
-
-          <div style={styles.passwordWrap}>
+        {mode === "login" ? (
+          <form onSubmit={handleLogin} style={styles.form}>
+            <label style={styles.label}>Email</label>
             <input
-              style={styles.passwordInput}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
-              type={showPassword ? "text" : "password"}
+              style={styles.input}
+              value={loginEmail}
+              onChange={(e) => setLoginEmail(e.target.value)}
+              placeholder="Enter email"
+              type="email"
               required
             />
 
-            <button
-              type="button"
-              style={styles.eyeButton}
-              onClick={() => setShowPassword(!showPassword)}
-              title={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? "🙈" : "👁️"}
+            <label style={styles.label}>Password</label>
+
+            <div style={styles.passwordWrap}>
+              <input
+                style={styles.passwordInput}
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="Enter password"
+                type={showLoginPassword ? "text" : "password"}
+                required
+              />
+
+              <button
+                type="button"
+                style={styles.eyeButton}
+                onClick={() => setShowLoginPassword(!showLoginPassword)}
+              >
+                {showLoginPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
+
+            {error && <div style={styles.error}>{error}</div>}
+            {success && <div style={styles.success}>{success}</div>}
+
+            <button style={styles.loginButton} disabled={loading}>
+              {loading ? "Please wait..." : "Login Securely"}
             </button>
-          </div>
+          </form>
+        ) : (
+          <form onSubmit={handleRegister} style={styles.form}>
+            <label style={styles.label}>Full Name</label>
+            <input
+              style={styles.input}
+              value={registerForm.name}
+              onChange={(e) => updateRegisterForm("name", e.target.value)}
+              placeholder="Enter customer name"
+              required
+            />
 
-          {error && <div style={styles.error}>{error}</div>}
+            <label style={styles.label}>Phone Number</label>
+            <input
+              style={styles.input}
+              value={registerForm.phone}
+              onChange={(e) => updateRegisterForm("phone", e.target.value)}
+              placeholder="Enter phone number"
+            />
 
-          <button style={styles.loginButton} disabled={loading}>
-            {loading ? "Logging in..." : "Login Securely"}
-          </button>
-        </form>
+            <label style={styles.label}>Aadhaar Number</label>
+            <input
+              style={styles.input}
+              value={registerForm.aadhaarNumber}
+              onChange={(e) =>
+                updateRegisterForm("aadhaarNumber", e.target.value)
+              }
+              placeholder="Enter Aadhaar number"
+            />
+
+            <label style={styles.label}>PAN Number</label>
+            <input
+              style={styles.input}
+              value={registerForm.panNumber}
+              onChange={(e) =>
+                updateRegisterForm("panNumber", e.target.value.toUpperCase())
+              }
+              placeholder="Enter PAN number"
+            />
+
+            <label style={styles.label}>Email</label>
+            <input
+              style={styles.input}
+              value={registerForm.email}
+              onChange={(e) => updateRegisterForm("email", e.target.value)}
+              placeholder="Enter email"
+              type="email"
+              required
+            />
+
+            <label style={styles.label}>Password</label>
+            <div style={styles.passwordWrap}>
+              <input
+                style={styles.passwordInput}
+                value={registerForm.password}
+                onChange={(e) => updateRegisterForm("password", e.target.value)}
+                placeholder="Minimum 6 characters"
+                type={showRegisterPassword ? "text" : "password"}
+                required
+              />
+
+              <button
+                type="button"
+                style={styles.eyeButton}
+                onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+              >
+                {showRegisterPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
+
+            {error && <div style={styles.error}>{error}</div>}
+            {success && <div style={styles.success}>{success}</div>}
+
+            <button style={styles.loginButton} disabled={loading}>
+              {loading ? "Creating Account..." : "Create Secure Account"}
+            </button>
+          </form>
+        )}
 
         <div style={styles.portalButtons}>
-          <button style={styles.customerButton} onClick={openCustomerRegister}>
-            Create Customer Account
-          </button>
+          {mode === "login" ? (
+            <button style={styles.customerButton} onClick={openRegister}>
+              Create Customer Account
+            </button>
+          ) : (
+            <button style={styles.customerButton} onClick={openLogin}>
+              Already Have Account? Login
+            </button>
+          )}
 
-          <button
-            style={styles.adminButton}
-            onClick={() => (window.location.href = "/admin")}
-          >
+          <button style={styles.adminButton} onClick={openAdminDirect}>
             Admin Direct Login
           </button>
         </div>
@@ -194,7 +370,7 @@ const styles = {
   },
 
   card: {
-    width: "min(520px, 100%)",
+    width: "min(560px, 100%)",
     padding: "44px",
     borderRadius: "30px",
     border: "1px solid rgba(247,210,139,0.78)",
@@ -260,7 +436,7 @@ const styles = {
   input: {
     width: "100%",
     height: "52px",
-    marginBottom: "18px",
+    marginBottom: "16px",
     padding: "0 16px",
     borderRadius: "14px",
     border: "1px solid rgba(148,163,184,0.6)",
@@ -313,6 +489,17 @@ const styles = {
     background: "rgba(239,68,68,0.14)",
     border: "1px solid rgba(248,113,113,0.55)",
     color: "#fecaca",
+    padding: "12px",
+    borderRadius: "12px",
+    marginBottom: "16px",
+    textAlign: "center",
+    fontWeight: "800",
+  },
+
+  success: {
+    background: "rgba(34,197,94,0.14)",
+    border: "1px solid rgba(74,222,128,0.55)",
+    color: "#bbf7d0",
     padding: "12px",
     borderRadius: "12px",
     marginBottom: "16px",
