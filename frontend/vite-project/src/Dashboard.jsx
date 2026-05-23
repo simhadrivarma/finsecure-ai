@@ -99,7 +99,23 @@ const formatDate = (date) => {
 
 function Dashboard() {
   const [isLogin, setIsLogin] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem("token"));
+  const [token, setToken] = useState(() => {
+  const savedRole = localStorage.getItem("role");
+  const savedToken = localStorage.getItem("token");
+
+  if (window.location.pathname === "/customer" && savedRole === "admin") {
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    localStorage.removeItem("userName");
+    localStorage.removeItem("userEmail");
+    localStorage.removeItem("userPhone");
+    localStorage.removeItem("userAadhaar");
+    localStorage.removeItem("userPan");
+    return null;
+  }
+
+  return savedToken;
+});
   const [message, setMessage] = useState("");
 
   const [dashboard, setDashboard] = useState({
@@ -774,10 +790,10 @@ localStorage.setItem("userPan", data.user.panNumber || "");
     if (token) {
       const role = localStorage.getItem("role");
 
-      if (role === "admin") {
-        window.location.href = "/admin";
-        return;
-      }
+      if (role === "admin" && window.location.pathname !== "/customer") {
+  window.location.href = "/admin";
+  return;
+}
 
       loadBranches();
       loadDashboard();

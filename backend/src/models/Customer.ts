@@ -1,157 +1,114 @@
 const mongoose = require("mongoose");
 
-const FINSECURE_IFSC_REGEX = /^FINS0[A-Z0-9]{6}$/;
-
-const moneyToNumber = (value: any) => {
-  const clean = String(value || "")
-    .replace(/₹/g, "")
-    .replace(/,/g, "")
-    .trim();
-
-  if (clean === "") return 0;
-
-  const numberValue = Number(clean);
-
-  return Number.isNaN(numberValue) ? NaN : numberValue;
-};
-
-const formatMoney = (value: any) => {
-  const numberValue = moneyToNumber(value);
-
-  if (Number.isNaN(numberValue)) {
-    return value;
-  }
-
-  return `₹${numberValue.toLocaleString("en-IN")}`;
-};
-
 const customerSchema = new mongoose.Schema(
   {
     id: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
+
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    customerName: {
+      type: String,
+      trim: true,
+    },
+
+    email: {
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
+      unique: true,
+    },
+
+    phone: {
+      type: String,
+      trim: true,
+    },
+
+    phoneNumber: {
+      type: String,
+      trim: true,
+    },
+
+    password: {
+      type: String,
+      select: false,
+    },
+
+    accountNumber: {
       type: String,
       required: true,
       unique: true,
       trim: true,
     },
 
-    name: {
-      type: String,
-      required: [true, "Customer name is required"],
-      trim: true,
-    },
-
-    email: {
-      type: String,
-      trim: true,
-      lowercase: true,
-      set: function (value: any) {
-        return String(value || "").toLowerCase().trim();
-      },
-      validate: {
-        validator: function (value: any) {
-          if (!value) return true;
-          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value));
-        },
-        message: "Please enter a valid email address",
-      },
-    },
-
-    phone: {
-      type: String,
-      trim: true,
-      set: function (value: any) {
-        return String(value || "").replace(/\D/g, "");
-      },
-      validate: {
-        validator: function (value: any) {
-          if (!value) return true;
-          return /^\d{10}$/.test(String(value));
-        },
-        message: "Phone number must be exactly 10 digits",
-      },
-    },
-
-    accountNumber: {
-      type: String,
-      required: [true, "Account number is required"],
-      trim: true,
-      set: function (value: any) {
-        return String(value || "").replace(/\D/g, "");
-      },
-      validate: {
-        validator: function (value: any) {
-          const digits = String(value || "").replace(/\D/g, "");
-          return digits.length >= 9 && digits.length <= 18;
-        },
-        message: "Account number must be 9 to 18 digits",
-      },
-    },
-
     accountType: {
       type: String,
-      required: [true, "Account type is required"],
-      enum: [
-        "Savings Account",
-        "Current Account",
-        "Salary Account",
-        "Fixed Deposit Account",
-        "Loan Account",
-      ],
+      default: "Savings Account",
+      trim: true,
     },
 
     ifsc: {
       type: String,
-      required: [true, "IFSC code is required"],
       trim: true,
-      uppercase: true,
-      set: function (value: any) {
-        return String(value || "").toUpperCase().trim();
-      },
-      validate: {
-        validator: function (value: any) {
-          return FINSECURE_IFSC_REGEX.test(String(value || "").toUpperCase());
-        },
-        message: "IFSC code must be like FINS0001001",
-      },
+    },
+
+    ifscCode: {
+      type: String,
+      trim: true,
     },
 
     cif: {
       type: String,
-      required: [true, "CIF number is required"],
       trim: true,
+    },
+
+    cifNumber: {
+      type: String,
+      trim: true,
+    },
+
+    aadhaarNumber: {
+      type: String,
+      trim: true,
+    },
+
+    panNumber: {
+      type: String,
       uppercase: true,
-      set: function (value: any) {
-        return String(value || "").toUpperCase().trim();
-      },
-      validate: {
-        validator: function (value: any) {
-          return /^[A-Z0-9]{6,20}$/.test(String(value || "").toUpperCase());
-        },
-        message: "CIF number must be 6 to 20 letters/numbers",
-      },
+      trim: true,
     },
 
     balance: {
-      type: String,
-      default: "₹0",
-      set: function (value: any) {
-        return formatMoney(value);
-      },
-      validate: {
-        validator: function (value: any) {
-          return !Number.isNaN(moneyToNumber(value));
-        },
-        message: "Balance must be a valid number",
-      },
+      type: Number,
+      default: 0,
+    },
+
+    totalIncome: {
+      type: Number,
+      default: 0,
+    },
+
+    totalExpense: {
+      type: Number,
+      default: 0,
     },
 
     branch: {
       type: String,
-      required: [true, "Branch is required"],
+      default: "Main Branch",
       trim: true,
     },
 
-    employee: {
+    assignedEmployee: {
       type: String,
       default: "",
       trim: true,
@@ -159,20 +116,56 @@ const customerSchema = new mongoose.Schema(
 
     kyc: {
       type: String,
-      enum: ["Verified", "Pending", "Rejected"],
+      enum: ["Pending", "Verified", "Rejected"],
       default: "Pending",
     },
 
     status: {
       type: String,
-      enum: ["Active", "Inactive", "Review", "Blocked"],
-      default: "Active",
+      enum: ["Pending", "Active", "Inactive", "Suspended"],
+      default: "Pending",
     },
   },
   {
     timestamps: true,
   }
 );
+
+customerSchema.pre("save", function (next: any) {
+  if (!this.customerName && this.name) {
+    this.customerName = this.name;
+  }
+
+  if (!this.name && this.customerName) {
+    this.name = this.customerName;
+  }
+
+  if (!this.phoneNumber && this.phone) {
+    this.phoneNumber = this.phone;
+  }
+
+  if (!this.phone && this.phoneNumber) {
+    this.phone = this.phoneNumber;
+  }
+
+  if (!this.ifscCode && this.ifsc) {
+    this.ifscCode = this.ifsc;
+  }
+
+  if (!this.ifsc && this.ifscCode) {
+    this.ifsc = this.ifscCode;
+  }
+
+  if (!this.cifNumber && this.cif) {
+    this.cifNumber = this.cif;
+  }
+
+  if (!this.cif && this.cifNumber) {
+    this.cif = this.cifNumber;
+  }
+
+  next();
+});
 
 const Customer =
   mongoose.models.Customer || mongoose.model("Customer", customerSchema);
