@@ -1,187 +1,175 @@
-import React, { useState } from "react";
-import CustomerDashboard from "./Dashboard";
+import React, { useEffect, useMemo, useState } from "react";
 import AdminPanel from "./AdminPanel";
+import Dashboard from "./Dashboard";
+import "./App.css";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
-
-function hasAdminSession() {
-  const token =
-    localStorage.getItem("finsecure_token") ||
-    localStorage.getItem("adminToken") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("token");
-
-  const adminRaw =
-    localStorage.getItem("finsecure_admin") ||
-    localStorage.getItem("admin") ||
-    localStorage.getItem("adminData") ||
-    localStorage.getItem("loggedInAdmin") ||
-    localStorage.getItem("currentUser") ||
-    localStorage.getItem("user");
-
-  if (!token || !adminRaw) return false;
-
-  try {
-    const admin = JSON.parse(adminRaw);
-
-    const role = String(
-      admin?.role ||
-        localStorage.getItem("role") ||
-        localStorage.getItem("userRole") ||
-        ""
-    ).toLowerCase();
-
-    return (
-      role.includes("admin") ||
-      role.includes("super") ||
-      admin?.email === "admin@finsecure.ai"
-    );
-  } catch {
-    return false;
-  }
-}
+  import.meta.env.VITE_API_URL || "https://finsecure-ai-backend.vercel.app";
 
 export default function App() {
-  const path = window.location.pathname;
-
-  if (path === "/customer") {
-    return <CustomerDashboard />;
-  }
-
-  if (path === "/admin") {
-    if (!hasAdminSession()) {
-      window.history.replaceState(null, "", "/");
-      return <UnifiedAuth />;
-    }
-
-    return <AdminPanel />;
-  }
-
-  return <UnifiedAuth />;
-}
-
-function UnifiedAuth() {
   const [mode, setMode] = useState("login");
+  const [page, setPage] = useState("auth");
+  const [branches, setBranches] = useState([]);
 
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
-  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [loginForm, setLoginForm] = useState({
+    email: "",
+    password: "",
+  });
 
   const [registerForm, setRegisterForm] = useState({
     name: "",
     phone: "",
     aadhaarNumber: "",
     panNumber: "",
+    branch: "",
     email: "",
     password: "",
-    role: "customer",
   });
 
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  const saveCustomerSession = (user, token) => {
-    const customerData = {
-      ...user,
-      role: "customer",
-      name: user.name || user.customerName || "Customer",
-      customerName: user.customerName || user.name || "Customer",
-      email: user.email || "",
-      phone: user.phone || user.phoneNumber || "",
-      phoneNumber: user.phoneNumber || user.phone || "",
-      aadhaarNumber: user.aadhaarNumber || "",
-      panNumber: user.panNumber || "",
-      balance: user.balance || 0,
-      totalIncome: user.totalIncome || 0,
-      totalExpense: user.totalExpense || 0,
-    };
+  const currentUser = useMemo(() => {
+    try {
+      const saved =
+        localStorage.getItem("finsecure_user") || localStorage.getItem("user");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  }, [page]);
 
-    localStorage.clear();
+  useEffect(() => {
+    const savedUser =
+      localStorage.getItem("finsecure_user") || localStorage.getItem("user");
+    const savedToken =
+      localStorage.getItem("finsecure_token") || localStorage.getItem("token");
 
-    localStorage.setItem("token", token);
-    localStorage.setItem("authToken", token);
-    localStorage.setItem("accessToken", token);
-    localStorage.setItem("customerToken", token);
-    localStorage.setItem("userToken", token);
-    localStorage.setItem("finsecure_token", token);
+    const path = window.location.pathname;
 
-    localStorage.setItem("role", "customer");
-    localStorage.setItem("userRole", "customer");
+    if (savedUser && savedToken) {
+      try {
+        const user = JSON.parse(savedUser);
+        const role = String(user.role || "").toLowerCase();
 
-    localStorage.setItem("user", JSON.stringify(customerData));
-    localStorage.setItem("currentUser", JSON.stringify(customerData));
-    localStorage.setItem("authUser", JSON.stringify(customerData));
-    localStorage.setItem("loggedInUser", JSON.stringify(customerData));
-    localStorage.setItem("customer", JSON.stringify(customerData));
-    localStorage.setItem("customerData", JSON.stringify(customerData));
-    localStorage.setItem("currentCustomer", JSON.stringify(customerData));
-    localStorage.setItem("loggedInCustomer", JSON.stringify(customerData));
-    localStorage.setItem("finsecure_customer", JSON.stringify(customerData));
+        if (path.includes("/admin") || role.includes("admin") || role.includes("super")) {
+          setPage("admin");
+          return;
+        }
 
-    localStorage.setItem("userName", customerData.name);
-    localStorage.setItem("customerName", customerData.name);
-    localStorage.setItem("userEmail", customerData.email);
-    localStorage.setItem("customerEmail", customerData.email);
-    localStorage.setItem("userPhone", customerData.phone);
-    localStorage.setItem("customerPhone", customerData.phone);
-    localStorage.setItem("userAadhaar", customerData.aadhaarNumber);
-    localStorage.setItem("userPan", customerData.panNumber);
+        if (path.includes("/dashboard") || role.includes("customer")) {
+          setPage("customer");
+          return;
+        }
+      } catch {
+        clearSession();
+      }
+    }
 
-    localStorage.setItem("isLoggedIn", "true");
-    localStorage.setItem("isAuthenticated", "true");
-    localStorage.setItem("customerLoggedIn", "true");
+    if (path.includes("/admin")) {
+      setPage("auth");
+      setMode("login");
+      return;
+    }
+
+    setPage("auth");
+  }, []);
+
+  useEffect(() => {
+    loadBranches();
+  }, []);
+
+  const clearSession = () => {
+    localStorage.removeItem("finsecure_token");
+    localStorage.removeItem("token");
+    localStorage.removeItem("finsecure_user");
+    localStorage.removeItem("user");
+    localStorage.removeItem("role");
   };
 
-  const saveAdminSession = (user, token) => {
-    const adminData = {
-      ...user,
-      role: user.role || "Super Admin",
-      name: user.name || "FinSecure Super Admin",
-      email: user.email || "admin@finsecure.ai",
-    };
+  const saveSession = (result) => {
+    const user = result.user || result.data;
+    const token = result.token;
 
-    localStorage.clear();
+    if (token) {
+      localStorage.setItem("finsecure_token", token);
+      localStorage.setItem("token", token);
+    }
 
-    localStorage.setItem("token", token);
-    localStorage.setItem("authToken", token);
-    localStorage.setItem("accessToken", token);
-    localStorage.setItem("adminToken", token);
-    localStorage.setItem("finsecure_token", token);
+    if (user) {
+      localStorage.setItem("finsecure_user", JSON.stringify(user));
+      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("role", user.role || "");
+    }
 
-    localStorage.setItem("role", adminData.role);
-    localStorage.setItem("userRole", adminData.role);
-
-    localStorage.setItem("user", JSON.stringify(adminData));
-    localStorage.setItem("currentUser", JSON.stringify(adminData));
-    localStorage.setItem("authUser", JSON.stringify(adminData));
-    localStorage.setItem("loggedInUser", JSON.stringify(adminData));
-    localStorage.setItem("admin", JSON.stringify(adminData));
-    localStorage.setItem("adminData", JSON.stringify(adminData));
-    localStorage.setItem("loggedInAdmin", JSON.stringify(adminData));
-    localStorage.setItem("finsecure_admin", JSON.stringify(adminData));
-
-    localStorage.setItem("userName", adminData.name);
-    localStorage.setItem("adminName", adminData.name);
-    localStorage.setItem("userEmail", adminData.email);
-    localStorage.setItem("adminEmail", adminData.email);
-
-    localStorage.setItem("isLoggedIn", "true");
-    localStorage.setItem("isAuthenticated", "true");
-    localStorage.setItem("adminLoggedIn", "true");
+    return user;
   };
 
-  const handleLogin = async (event) => {
-    event.preventDefault();
+  const goTo = (newPage) => {
+    setPage(newPage);
+
+    if (newPage === "admin") {
+      window.history.pushState({}, "", "/admin");
+      return;
+    }
+
+    if (newPage === "customer") {
+      window.history.pushState({}, "", "/dashboard");
+      return;
+    }
+
+    window.history.pushState({}, "", "/");
+  };
+
+  const loadBranches = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/branches`);
+      const result = await response.json();
+
+      if (result.success && Array.isArray(result.data)) {
+        setBranches(result.data);
+      } else {
+        setBranches([]);
+      }
+    } catch (err) {
+      console.error("Failed to load branches:", err);
+      setBranches([]);
+    }
+  };
+
+  const handleLoginChange = (field, value) => {
+    setError("");
+    setSuccess("");
+    setLoginForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleRegisterChange = (field, value) => {
+    setError("");
+    setSuccess("");
+    setRegisterForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+
+    setError("");
+    setSuccess("");
+
+    if (!loginForm.email || !loginForm.password) {
+      setError("Please enter email and password");
+      return;
+    }
 
     try {
       setLoading(true);
-      setError("");
-      setSuccess("");
 
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
@@ -189,69 +177,102 @@ function UnifiedAuth() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: loginEmail.trim().toLowerCase(),
-          password: loginPassword,
+          email: loginForm.email,
+          password: loginForm.password,
         }),
       });
 
       const result = await response.json();
 
-      if (!response.ok) {
+      if (!response.ok || !result.success) {
         throw new Error(result.message || "Invalid email or password");
       }
 
-      const user = result.user || result.data;
-      const token = result.token;
+      const user = saveSession(result);
+      const role = String(user?.role || "").toLowerCase();
 
-      if (!user || !token) {
-        throw new Error("Invalid login response from backend");
+      setSuccess("Login successful");
+
+      if (role.includes("admin") || role.includes("super")) {
+        goTo("admin");
+      } else {
+        goTo("customer");
       }
-
-      const role = String(user.role || "").toLowerCase();
-
-      const isAdmin =
-        role.includes("admin") ||
-        role.includes("super") ||
-        role.includes("manager") ||
-        role.includes("officer") ||
-        role.includes("analyst") ||
-        role.includes("support") ||
-        user.email === "admin@finsecure.ai";
-
-      if (isAdmin) {
-        saveAdminSession(user, token);
-        window.location.href = "/admin";
-        return;
-      }
-
-      saveCustomerSession(user, token);
-      window.location.href = "/customer";
     } catch (err) {
-      setError(err.message || "Invalid email or password");
+      setError(err.message || "Login failed");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRegister = async (event) => {
-    event.preventDefault();
+  const handleAdminDirectLogin = async () => {
+    setLoginForm({
+      email: "admin@finsecure.ai",
+      password: "admin123",
+    });
+
+    setError("");
+    setSuccess("");
 
     try {
       setLoading(true);
-      setError("");
-      setSuccess("");
 
-      if (!registerForm.name.trim()) {
-        throw new Error("Full name is required");
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "admin@finsecure.ai",
+          password: "admin123",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Admin login failed");
       }
 
-      if (!registerForm.email.trim()) {
-        throw new Error("Email is required");
-      }
+      saveSession(result);
+      goTo("admin");
+    } catch (err) {
+      setError(err.message || "Admin login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      if (!registerForm.password || registerForm.password.length < 6) {
-        throw new Error("Password must be at least 6 characters");
-      }
+  const handleRegister = async (e) => {
+    e.preventDefault();
+
+    setError("");
+    setSuccess("");
+
+    if (!registerForm.name.trim()) {
+      setError("Full name is required");
+      return;
+    }
+
+    if (!registerForm.phone.trim()) {
+      setError("Phone number is required");
+      return;
+    }
+
+    if (!registerForm.email.trim()) {
+      setError("Email is required");
+      return;
+    }
+
+    if (!registerForm.password || registerForm.password.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const selectedBranch = registerForm.branch || "Main Branch";
 
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
@@ -259,33 +280,25 @@ function UnifiedAuth() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: registerForm.name.trim(),
-          email: registerForm.email.trim().toLowerCase(),
+          name: registerForm.name,
+          phone: registerForm.phone,
+          aadhaarNumber: registerForm.aadhaarNumber,
+          panNumber: registerForm.panNumber,
+          branch: selectedBranch,
+          email: registerForm.email,
           password: registerForm.password,
-          role: "customer",
-          phone: registerForm.phone.trim(),
-          aadhaarNumber: registerForm.aadhaarNumber.trim(),
-          panNumber: registerForm.panNumber.trim().toUpperCase(),
         }),
       });
 
       const result = await response.json();
 
-      if (!response.ok) {
+      if (!response.ok || !result.success) {
         throw new Error(result.message || "Registration failed");
       }
 
-      const user = result.user || result.data;
-      const token = result.token;
-
-      if (!user || !token) {
-        throw new Error("Invalid registration response from backend");
-      }
-
-      saveCustomerSession(user, token);
-
+      saveSession(result);
       setSuccess("Customer registered successfully");
-      window.location.href = "/customer";
+      goTo("customer");
     } catch (err) {
       setError(err.message || "Registration failed");
     } finally {
@@ -293,41 +306,43 @@ function UnifiedAuth() {
     }
   };
 
-  const updateRegisterForm = (field, value) => {
-    setRegisterForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const openRegister = () => {
-    setMode("register");
-    setError("");
-    setSuccess("");
-  };
-
-  const openLogin = () => {
+  const logout = () => {
+    clearSession();
+    setLoginForm({
+      email: "",
+      password: "",
+    });
+    setRegisterForm({
+      name: "",
+      phone: "",
+      aadhaarNumber: "",
+      panNumber: "",
+      branch: "",
+      email: "",
+      password: "",
+    });
     setMode("login");
-    setError("");
-    setSuccess("");
+    setPage("auth");
+    window.history.pushState({}, "", "/");
   };
 
-  const openAdminDirect = () => {
-    setMode("login");
-    setLoginEmail("admin@finsecure.ai");
-    setLoginPassword("");
-    setError("");
-    setSuccess(
-      "Admin email selected. Enter admin password and click Login Securely."
-    );
-  };
+  if (page === "admin") {
+    return <AdminPanel user={currentUser} onLogout={logout} />;
+  }
+
+  if (page === "customer") {
+    return <Dashboard user={currentUser} onLogout={logout} />;
+  }
 
   return (
     <div style={styles.page}>
-      <div style={styles.card}>
-        <div style={styles.logo}>FS</div>
+      <div style={styles.backgroundGlowOne} />
+      <div style={styles.backgroundGlowTwo} />
 
-        <p style={styles.badge}>AI-Powered FinTech Platform</p>
+      <div style={styles.card}>
+        <div style={styles.logoBox}>FS</div>
+
+        <div style={styles.badge}>AI-Powered FinTech Platform</div>
 
         <h1 style={styles.title}>FinSecure AI</h1>
 
@@ -342,38 +357,34 @@ function UnifiedAuth() {
             <label style={styles.label}>Email</label>
             <input
               style={styles.input}
-              value={loginEmail}
-              onChange={(e) => setLoginEmail(e.target.value)}
-              placeholder="Enter email"
               type="email"
-              required
+              placeholder="Enter email"
+              value={loginForm.email}
+              onChange={(e) => handleLoginChange("email", e.target.value)}
             />
 
             <label style={styles.label}>Password</label>
             <div style={styles.passwordWrap}>
               <input
                 style={styles.passwordInput}
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
+                type={showPassword ? "text" : "password"}
                 placeholder="Enter password"
-                type={showLoginPassword ? "text" : "password"}
-                required
+                value={loginForm.password}
+                onChange={(e) => handleLoginChange("password", e.target.value)}
               />
-
               <button
                 type="button"
                 style={styles.eyeButton}
-                onClick={() => setShowLoginPassword(!showLoginPassword)}
-                title={showLoginPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((prev) => !prev)}
               >
-                {showLoginPassword ? "🙈" : "👁️"}
+                👁️
               </button>
             </div>
 
             {error && <div style={styles.error}>{error}</div>}
             {success && <div style={styles.success}>{success}</div>}
 
-            <button style={styles.loginButton} disabled={loading}>
+            <button type="submit" style={styles.loginButton}>
               {loading ? "Please wait..." : "Login Securely"}
             </button>
           </form>
@@ -382,77 +393,104 @@ function UnifiedAuth() {
             <label style={styles.label}>Full Name</label>
             <input
               style={styles.input}
-              value={registerForm.name}
-              onChange={(e) => updateRegisterForm("name", e.target.value)}
+              type="text"
               placeholder="Enter customer full name"
-              required
+              value={registerForm.name}
+              onChange={(e) => handleRegisterChange("name", e.target.value)}
             />
 
             <label style={styles.label}>Phone Number</label>
             <input
               style={styles.input}
-              value={registerForm.phone}
-              onChange={(e) => updateRegisterForm("phone", e.target.value)}
+              type="tel"
               placeholder="Enter phone number"
+              value={registerForm.phone}
+              onChange={(e) => handleRegisterChange("phone", e.target.value)}
             />
 
             <label style={styles.label}>Aadhaar Number</label>
             <input
               style={styles.input}
+              type="text"
+              placeholder="Enter Aadhaar number"
               value={registerForm.aadhaarNumber}
               onChange={(e) =>
-                updateRegisterForm("aadhaarNumber", e.target.value)
+                handleRegisterChange("aadhaarNumber", e.target.value)
               }
-              placeholder="Enter Aadhaar number"
             />
 
             <label style={styles.label}>PAN Number</label>
             <input
               style={styles.input}
+              type="text"
+              placeholder="Enter PAN number"
               value={registerForm.panNumber}
               onChange={(e) =>
-                updateRegisterForm("panNumber", e.target.value.toUpperCase())
+                handleRegisterChange("panNumber", e.target.value.toUpperCase())
               }
-              placeholder="Enter PAN number"
             />
+
+            <label style={styles.label}>Select Branch</label>
+            <select
+              style={styles.input}
+              value={registerForm.branch}
+              onChange={(e) => handleRegisterChange("branch", e.target.value)}
+            >
+              <option value="">Select branch</option>
+              <option value="Main Branch">Main Branch - FINS0001001</option>
+
+              {branches.map((branch) => (
+                <option
+                  key={branch._id || branch.id || branch.name}
+                  value={branch.name}
+                >
+                  {branch.name}
+                  {branch.ifsc || branch.ifscCode
+                    ? ` - ${branch.ifsc || branch.ifscCode}`
+                    : ""}
+                </option>
+              ))}
+            </select>
+
+            <div style={styles.branchInfo}>
+              {branches.length > 0
+                ? `${branches.length} admin branch records loaded`
+                : "If no branch is selected, Main Branch will be used"}
+            </div>
 
             <label style={styles.label}>Email</label>
             <input
               style={styles.input}
-              value={registerForm.email}
-              onChange={(e) => updateRegisterForm("email", e.target.value)}
-              placeholder="Enter email"
               type="email"
-              required
+              placeholder="Enter email"
+              value={registerForm.email}
+              onChange={(e) => handleRegisterChange("email", e.target.value)}
             />
 
             <label style={styles.label}>Password</label>
             <div style={styles.passwordWrap}>
               <input
                 style={styles.passwordInput}
-                value={registerForm.password}
-                onChange={(e) => updateRegisterForm("password", e.target.value)}
+                type={showPassword ? "text" : "password"}
                 placeholder="Minimum 6 characters"
-                type={showRegisterPassword ? "text" : "password"}
-                required
+                value={registerForm.password}
+                onChange={(e) =>
+                  handleRegisterChange("password", e.target.value)
+                }
               />
-
               <button
                 type="button"
                 style={styles.eyeButton}
-                onClick={() => setShowRegisterPassword(!showRegisterPassword)}
-                title={
-                  showRegisterPassword ? "Hide password" : "Show password"
-                }
+                onClick={() => setShowPassword((prev) => !prev)}
               >
-                {showRegisterPassword ? "🙈" : "👁️"}
+                👁️
               </button>
             </div>
 
             {error && <div style={styles.error}>{error}</div>}
             {success && <div style={styles.success}>{success}</div>}
 
-            <button style={styles.loginButton} disabled={loading}>
+            <button type="submit" style={styles.loginButton}>
               {loading ? "Creating Account..." : "Create Secure Account"}
             </button>
           </form>
@@ -463,7 +501,12 @@ function UnifiedAuth() {
             <button
               type="button"
               style={styles.customerButton}
-              onClick={openRegister}
+              onClick={() => {
+                setMode("register");
+                setError("");
+                setSuccess("");
+                loadBranches();
+              }}
             >
               Create Customer Account
             </button>
@@ -471,7 +514,11 @@ function UnifiedAuth() {
             <button
               type="button"
               style={styles.customerButton}
-              onClick={openLogin}
+              onClick={() => {
+                setMode("login");
+                setError("");
+                setSuccess("");
+              }}
             >
               Already Have Account? Login
             </button>
@@ -480,13 +527,13 @@ function UnifiedAuth() {
           <button
             type="button"
             style={styles.adminButton}
-            onClick={openAdminDirect}
+            onClick={handleAdminDirectLogin}
           >
             Admin Direct Login
           </button>
         </div>
 
-        <p style={styles.note}>
+        <p style={styles.footerText}>
           Admin users will go to Admin Portal. Customer users will go to
           Customer Dashboard automatically.
         </p>
@@ -498,100 +545,133 @@ function UnifiedAuth() {
 const styles = {
   page: {
     minHeight: "100vh",
+    width: "100%",
+    background:
+      "radial-gradient(circle at top left, #111827 0%, #071326 35%, #020817 100%)",
+    color: "#ffffff",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: "30px",
-    background:
-      "radial-gradient(circle at top left, rgba(247,210,139,0.22), transparent 30%), radial-gradient(circle at bottom right, rgba(37,99,235,0.22), transparent 30%), linear-gradient(135deg, #020617 0%, #071326 45%, #020617 100%)",
-    fontFamily: "Inter, Arial, sans-serif",
+    padding: "40px 16px",
+    boxSizing: "border-box",
+    position: "relative",
+    overflow: "auto",
+  },
+
+  backgroundGlowOne: {
+    position: "fixed",
+    top: "8%",
+    left: "10%",
+    width: "260px",
+    height: "260px",
+    borderRadius: "999px",
+    background: "rgba(245, 197, 91, 0.08)",
+    filter: "blur(60px)",
+    pointerEvents: "none",
+  },
+
+  backgroundGlowTwo: {
+    position: "fixed",
+    bottom: "8%",
+    right: "10%",
+    width: "320px",
+    height: "320px",
+    borderRadius: "999px",
+    background: "rgba(37, 99, 235, 0.12)",
+    filter: "blur(70px)",
+    pointerEvents: "none",
   },
 
   card: {
-    width: "min(560px, 100%)",
-    padding: "44px",
-    borderRadius: "30px",
-    border: "1px solid rgba(247,210,139,0.78)",
-    background:
-      "linear-gradient(145deg, rgba(8,21,42,0.94), rgba(2,8,23,0.88))",
-    boxShadow: "0 45px 120px rgba(0,0,0,0.58)",
-    color: "#ffffff",
-    textAlign: "center",
+    width: "100%",
+    maxWidth: "540px",
+    border: "1px solid rgba(245, 197, 91, 0.65)",
+    borderRadius: "28px",
+    padding: "36px",
+    background: "rgba(3, 12, 28, 0.86)",
+    boxShadow: "0 24px 80px rgba(0,0,0,0.45)",
+    backdropFilter: "blur(14px)",
+    position: "relative",
+    zIndex: 5,
   },
 
-  logo: {
-    width: "82px",
-    height: "82px",
-    margin: "0 auto 20px",
-    borderRadius: "24px",
-    border: "2px solid #f7d28b",
-    color: "#f7d28b",
+  logoBox: {
+    width: "70px",
+    height: "70px",
+    borderRadius: "18px",
+    border: "1px solid #f5c55b",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "32px",
+    margin: "0 auto 18px",
+    fontSize: "28px",
     fontWeight: "900",
+    color: "#f7d477",
     fontFamily: "Georgia, serif",
   },
 
   badge: {
-    display: "inline-block",
-    margin: "0 0 14px",
-    padding: "8px 14px",
+    width: "fit-content",
+    margin: "0 auto 14px",
+    padding: "7px 16px",
     borderRadius: "999px",
-    background: "rgba(247,210,139,0.12)",
-    border: "1px solid rgba(247,210,139,0.55)",
-    color: "#f7d28b",
-    fontWeight: "800",
+    border: "1px solid rgba(245, 197, 91, 0.7)",
+    background: "rgba(245, 197, 91, 0.12)",
+    color: "#f7d477",
     fontSize: "13px",
+    fontWeight: "800",
   },
 
   title: {
-    margin: "0",
-    fontSize: "44px",
+    margin: 0,
+    textAlign: "center",
+    fontSize: "42px",
+    lineHeight: 1,
     fontFamily: "Georgia, serif",
-    color: "#fff7dc",
+    color: "#fff4d8",
+    textShadow: "0 3px 16px rgba(245, 197, 91, 0.22)",
   },
 
   subtitle: {
-    margin: "18px auto 28px",
+    margin: "18px 0 28px",
+    textAlign: "center",
     color: "#dbeafe",
-    fontSize: "16px",
-    lineHeight: "1.6",
+    fontSize: "15px",
+    lineHeight: 1.5,
   },
 
   form: {
-    textAlign: "left",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
   },
 
   label: {
-    display: "block",
-    marginBottom: "8px",
-    color: "#f8fafc",
-    fontWeight: "800",
+    color: "#ffffff",
+    fontWeight: "900",
+    fontSize: "14px",
+    marginTop: "6px",
   },
 
   input: {
     width: "100%",
-    height: "52px",
-    marginBottom: "16px",
-    padding: "0 16px",
-    borderRadius: "14px",
-    border: "1px solid rgba(148,163,184,0.6)",
-    background: "rgba(15,23,42,0.72)",
+    height: "46px",
+    borderRadius: "12px",
+    border: "1px solid rgba(148, 163, 184, 0.6)",
+    background: "rgba(15, 23, 42, 0.94)",
     color: "#ffffff",
+    padding: "0 14px",
+    fontSize: "14px",
     outline: "none",
-    fontSize: "15px",
     boxSizing: "border-box",
   },
 
   passwordWrap: {
     width: "100%",
-    height: "52px",
-    marginBottom: "18px",
-    borderRadius: "14px",
-    border: "1px solid rgba(148,163,184,0.6)",
-    background: "rgba(15,23,42,0.72)",
+    height: "46px",
+    borderRadius: "12px",
+    border: "1px solid rgba(148, 163, 184, 0.6)",
+    background: "rgba(15, 23, 42, 0.94)",
     display: "flex",
     alignItems: "center",
     overflow: "hidden",
@@ -601,94 +681,100 @@ const styles = {
   passwordInput: {
     flex: 1,
     height: "100%",
-    padding: "0 16px",
     border: "none",
     outline: "none",
     background: "transparent",
     color: "#ffffff",
-    fontSize: "15px",
-    boxSizing: "border-box",
+    padding: "0 14px",
+    fontSize: "14px",
   },
 
   eyeButton: {
     width: "54px",
     height: "100%",
     border: "none",
-    background: "rgba(247,210,139,0.08)",
-    color: "#f7d28b",
+    background: "rgba(255,255,255,0.08)",
+    color: "#ffffff",
     cursor: "pointer",
-    fontSize: "20px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+  },
+
+  branchInfo: {
+    color: "#93c5fd",
+    fontSize: "12px",
+    marginTop: "-4px",
+    marginBottom: "4px",
   },
 
   error: {
-    background: "rgba(239,68,68,0.14)",
-    border: "1px solid rgba(248,113,113,0.55)",
-    color: "#fecaca",
+    marginTop: "8px",
     padding: "12px",
     borderRadius: "12px",
-    marginBottom: "16px",
-    textAlign: "center",
+    border: "1px solid rgba(248, 113, 113, 0.65)",
+    background: "rgba(127, 29, 29, 0.35)",
+    color: "#fecaca",
     fontWeight: "800",
+    textAlign: "center",
+    fontSize: "14px",
   },
 
   success: {
-    background: "rgba(34,197,94,0.14)",
-    border: "1px solid rgba(74,222,128,0.55)",
-    color: "#bbf7d0",
+    marginTop: "8px",
     padding: "12px",
     borderRadius: "12px",
-    marginBottom: "16px",
-    textAlign: "center",
+    border: "1px solid rgba(74, 222, 128, 0.65)",
+    background: "rgba(20, 83, 45, 0.35)",
+    color: "#bbf7d0",
     fontWeight: "800",
+    textAlign: "center",
+    fontSize: "14px",
   },
 
   loginButton: {
     width: "100%",
-    height: "56px",
-    borderRadius: "16px",
-    border: "1px solid rgba(247,210,139,0.8)",
-    background:
-      "linear-gradient(135deg, #f7d28b 0%, #d4af37 45%, #f7d28b 100%)",
-    color: "#071326",
-    fontSize: "17px",
-    fontWeight: "900",
+    height: "52px",
+    border: "none",
+    borderRadius: "14px",
+    marginTop: "10px",
+    background: "linear-gradient(135deg, #f7d477, #d5a928)",
+    color: "#020817",
+    fontSize: "15px",
+    fontWeight: "950",
     cursor: "pointer",
+    boxShadow: "0 12px 28px rgba(245, 197, 91, 0.22)",
   },
 
   portalButtons: {
+    marginTop: "16px",
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "14px",
-    marginTop: "18px",
+    gap: "12px",
   },
 
   customerButton: {
-    minHeight: "52px",
-    borderRadius: "14px",
-    border: "1px solid rgba(247,210,139,0.75)",
-    background: "rgba(247,210,139,0.1)",
-    color: "#f7d28b",
+    height: "48px",
+    borderRadius: "12px",
+    border: "1px solid rgba(245, 197, 91, 0.7)",
+    background: "rgba(245, 197, 91, 0.08)",
+    color: "#f7d477",
     fontWeight: "900",
     cursor: "pointer",
   },
 
   adminButton: {
-    minHeight: "52px",
-    borderRadius: "14px",
-    border: "1px solid rgba(96,165,250,0.75)",
-    background: "rgba(37,99,235,0.16)",
+    height: "48px",
+    borderRadius: "12px",
+    border: "1px solid rgba(59, 130, 246, 0.8)",
+    background: "rgba(30, 64, 175, 0.35)",
     color: "#dbeafe",
     fontWeight: "900",
     cursor: "pointer",
   },
 
-  note: {
-    margin: "22px 0 0",
-    color: "#94a3b8",
-    fontSize: "13px",
-    lineHeight: "1.5",
+  footerText: {
+    marginTop: "20px",
+    color: "#93c5fd",
+    fontSize: "12px",
+    lineHeight: 1.5,
+    textAlign: "center",
   },
 };
