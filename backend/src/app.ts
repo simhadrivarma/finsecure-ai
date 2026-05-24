@@ -9,6 +9,10 @@ dotenv.config();
 
 const app = express();
 
+/* ===============================
+   MIDDLEWARE
+================================ */
+
 app.use(
   cors({
     origin: true,
@@ -248,6 +252,7 @@ const normalizeRecord = async (
   if (entity === "transaction") {
     data.customer = data.customer || data.customerName || "";
     data.accountNumber = data.accountNumber || "";
+    data.email = data.email ? String(data.email).toLowerCase().trim() : "";
     data.type = data.type || "UPI Payment";
     data.amount = cleanMoney(data.amount);
     data.date = data.date || new Date().toISOString().slice(0, 10);
@@ -381,12 +386,19 @@ const syncUserToCustomerRecord = async (userData: any) => {
     status: userData.status || "Active",
   });
 
+  const createdAtForInsert = customerPayload.createdAt || new Date();
+
+  // VERY IMPORTANT:
+  // Remove createdAt from $set because MongoDB cannot update createdAt in both
+  // $set and $setOnInsert at the same time.
+  delete customerPayload.createdAt;
+
   await customersCollection.updateOne(
     { email },
     {
       $set: customerPayload,
       $setOnInsert: {
-        createdAt: new Date(),
+        createdAt: createdAtForInsert,
       },
     },
     { upsert: true }
@@ -430,7 +442,7 @@ const applyTransactionToCustomerBalance = async (transaction: any) => {
     return;
   }
 
-  const update: any = {
+  await customersCollection.updateOne(query, {
     $inc: {
       balance: isCredit ? amount : -amount,
       totalIncome: isCredit ? amount : 0,
@@ -439,9 +451,7 @@ const applyTransactionToCustomerBalance = async (transaction: any) => {
     $set: {
       updatedAt: new Date(),
     },
-  };
-
-  await customersCollection.updateOne(query, update);
+  });
 
   const updatedCustomer = await customersCollection.findOne(query);
 
