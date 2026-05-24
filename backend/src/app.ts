@@ -304,6 +304,180 @@ app.get("/api/health", async (req: any, res: any) => {
 });
 
 /* ===============================
+   DIRECT AUTH ROUTES
+================================ */
+
+app.post("/api/auth/login", async (req: any, res: any) => {
+  try {
+    const jwt = require("jsonwebtoken");
+    const bcrypt = require("bcryptjs");
+
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
+    }
+
+    const normalizedEmail = String(email).toLowerCase().trim();
+
+    await connectDatabase();
+
+    const usersCollection = await getCollection("users");
+    const adminsCollection = await getCollection("admins");
+
+    let account =
+      (await adminsCollection.findOne({ email: normalizedEmail })) ||
+      (await usersCollection.findOne({ email: normalizedEmail }));
+
+    if (!account) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    const isPasswordCorrect = await bcrypt.compare(
+      String(password),
+      String(account.password || "")
+    );
+
+    if (!isPasswordCorrect) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    const safeUser = {
+      ...account,
+      _id: String(account._id),
+      id: account.id || String(account._id),
+      role: account.role || "customer",
+    };
+
+    delete safeUser.password;
+
+    const token = jwt.sign(
+      {
+        id: safeUser._id,
+        email: safeUser.email,
+        role: safeUser.role,
+      },
+      process.env.JWT_SECRET || "finsecure_ai_secret_key",
+      { expiresIn: "7d" }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      user: safeUser,
+      data: safeUser,
+      token,
+    });
+  } catch (error: any) {
+    console.error("Direct login failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Login failed",
+    });
+  }
+});
+
+app.post("/api/auth/register", async (req: any, res: any) => {
+  try {
+    const bcrypt = require("bcryptjs");
+    const jwt = require("jsonwebtoken");
+
+    const { name, email, password, role, phone, aadhaarNumber, panNumber } =
+      req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email and password are required",
+      });
+    }
+
+    if (String(password).length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    const normalizedEmail = String(email).toLowerCase().trim();
+
+    await connectDatabase();
+
+    const usersCollection = await getCollection("users");
+
+    const existingUser = await usersCollection.findOne({
+      email: normalizedEmail,
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "Account already exists with this email",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(String(password), 10);
+
+    const userPayload = {
+      id: makeId("CUS"),
+      name: String(name).trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
+      role: role || "customer",
+      phone: phone || "",
+      aadhaarNumber: aadhaarNumber || "",
+      panNumber: panNumber ? String(panNumber).toUpperCase() : "",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const inserted = await usersCollection.insertOne(userPayload);
+
+    const safeUser = {
+      ...userPayload,
+      _id: String(inserted.insertedId),
+    };
+
+    delete safeUser.password;
+
+    const token = jwt.sign(
+      {
+        id: safeUser._id,
+        email: safeUser.email,
+        role: safeUser.role,
+      },
+      process.env.JWT_SECRET || "finsecure_ai_secret_key",
+      { expiresIn: "7d" }
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Registered successfully",
+      user: safeUser,
+      data: safeUser,
+      token,
+    });
+  } catch (error: any) {
+    console.error("Direct register failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Registration failed",
+    });
+  }
+});
+
+/* ===============================
    ADMIN PANEL CRUD ROUTES
 ================================ */
 
