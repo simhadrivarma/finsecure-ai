@@ -88,6 +88,31 @@ app.use("/api/auth", authRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 
+// existing routes above
+app.use("/api/auth", authRoutes);
+app.use("/api/admins", adminRoutes);
+// other routes...
+
+// ✅ PASTE DIRECT CUSTOMER ROUTES HERE
+
+app.get("/api/customers", async (req: any, res: any) => {
+  // customer route code
+});
+
+app.post("/api/customers", async (req: any, res: any) => {
+  // customer route code
+});
+
+// ❌ 404 handler must stay below customer routes
+app.use((req: any, res: any) => {
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
+  });
+});
+
+module.exports = app;
+
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -95,4 +120,5 @@ app.use((req, res) => {
   });
 });
 
+export default app;
 module.exports = app;
