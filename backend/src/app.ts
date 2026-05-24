@@ -81,6 +81,31 @@ const makeId = (prefix: string) => {
   return `${prefix}${Date.now().toString().slice(-8)}`;
 };
 
+const generateAccountNumber = () => {
+  const timePart = Date.now().toString().slice(-8);
+  const randomPart = Math.floor(100 + Math.random() * 900).toString();
+  return `${timePart}${randomPart}`;
+};
+
+const generateCifNumber = () => {
+  const timePart = Date.now().toString().slice(-8);
+  const randomPart = Math.floor(10 + Math.random() * 90).toString();
+  return `CIF${timePart}${randomPart}`;
+};
+
+const getIfscByBranch = (branchName: string) => {
+  const branch = String(branchName || "Main Branch").toLowerCase();
+
+  if (branch.includes("gajuwaka")) return "FINS0001008";
+  if (branch.includes("jagadamba")) return "FINS0001009";
+  if (branch.includes("autonagar")) return "FINS0001010";
+  if (branch.includes("auto nagar")) return "FINS0001010";
+  if (branch.includes("bc road")) return "FINS0001011";
+  if (branch.includes("b c road")) return "FINS0001011";
+
+  return "FINS0001001";
+};
+
 const cleanMoney = (value: any) => {
   if (value === undefined || value === null || value === "") return 0;
 
@@ -180,7 +205,7 @@ const normalizeRecord = async (
     data.phone = data.phone || "";
     data.role = data.role || "Customer Support Executive";
     data.branch = data.branch || "Main Branch";
-    data.ifsc = data.ifsc || "";
+    data.ifsc = data.ifsc || getIfscByBranch(data.branch);
     data.customers = Number(data.customers || 0);
     data.status = data.status || "Active";
   }
@@ -188,7 +213,7 @@ const normalizeRecord = async (
   if (entity === "branch") {
     data.name = data.name || "";
     data.address = data.address || "";
-    data.ifsc = data.ifsc || "";
+    data.ifsc = data.ifsc || getIfscByBranch(data.name);
     data.manager = data.manager || "";
     data.employees = Number(data.employees || 0);
     data.customers = Number(data.customers || 0);
@@ -206,13 +231,27 @@ const normalizeRecord = async (
     data.phone = data.phone || data.phoneNumber || "";
     data.phoneNumber = data.phoneNumber || data.phone || "";
 
+    data.branch = data.branch || "Main Branch";
+
     data.accountNumber = String(data.accountNumber || "").trim();
+    if (!data.accountNumber) {
+      data.accountNumber = generateAccountNumber();
+    }
+
     data.accountType = data.accountType || "Savings Account";
 
     data.ifsc = data.ifsc || data.ifscCode || "";
+    if (!data.ifsc) {
+      data.ifsc = getIfscByBranch(data.branch);
+    }
+
     data.ifscCode = data.ifscCode || data.ifsc || "";
 
     data.cif = data.cif || data.cifNumber || "";
+    if (!data.cif) {
+      data.cif = generateCifNumber();
+    }
+
     data.cifNumber = data.cifNumber || data.cif || "";
 
     data.aadhaarNumber = data.aadhaarNumber || "";
@@ -221,8 +260,6 @@ const normalizeRecord = async (
     data.balance = cleanMoney(data.balance);
     data.totalIncome = cleanMoney(data.totalIncome);
     data.totalExpense = cleanMoney(data.totalExpense);
-
-    data.branch = data.branch || "Main Branch";
 
     data.assignedEmployee =
       data.assignedEmployee || data.employee || data.assignedEmployeeName || "";
@@ -313,6 +350,13 @@ const syncCustomerToLoginUser = async (customerData: any, plainPassword?: any) =
   const defaultPassword =
     plainPassword || customerData.password || getDefaultCustomerPassword(customerData);
 
+  const finalBranch = customerData.branch || "Main Branch";
+  const finalAccountNumber =
+    customerData.accountNumber || generateAccountNumber();
+  const finalIfsc =
+    customerData.ifsc || customerData.ifscCode || getIfscByBranch(finalBranch);
+  const finalCif = customerData.cif || customerData.cifNumber || generateCifNumber();
+
   const userPayload: any = {
     name: customerData.name || customerData.customerName || "Customer",
     customerName: customerData.customerName || customerData.name || "Customer",
@@ -320,18 +364,18 @@ const syncCustomerToLoginUser = async (customerData: any, plainPassword?: any) =
     role: "customer",
     phone: customerData.phone || customerData.phoneNumber || "",
     phoneNumber: customerData.phoneNumber || customerData.phone || "",
-    accountNumber: customerData.accountNumber || "",
+    accountNumber: finalAccountNumber,
     accountType: customerData.accountType || "Savings Account",
-    ifsc: customerData.ifsc || customerData.ifscCode || "",
-    ifscCode: customerData.ifscCode || customerData.ifsc || "",
-    cif: customerData.cif || customerData.cifNumber || "",
-    cifNumber: customerData.cifNumber || customerData.cif || "",
+    ifsc: finalIfsc,
+    ifscCode: finalIfsc,
+    cif: finalCif,
+    cifNumber: finalCif,
     aadhaarNumber: customerData.aadhaarNumber || "",
     panNumber: customerData.panNumber || "",
     balance: cleanMoney(customerData.balance),
     totalIncome: cleanMoney(customerData.totalIncome),
     totalExpense: cleanMoney(customerData.totalExpense),
-    branch: customerData.branch || "Main Branch",
+    branch: finalBranch,
     assignedEmployee: customerData.assignedEmployee || customerData.employee || "",
     kyc: customerData.kyc || "Pending",
     status: customerData.status || "Active",
@@ -362,6 +406,11 @@ const syncUserToCustomerRecord = async (userData: any) => {
 
   const email = String(userData.email).toLowerCase().trim();
 
+  const finalBranch = userData.branch || "Main Branch";
+  const finalAccountNumber = userData.accountNumber || generateAccountNumber();
+  const finalIfsc = userData.ifsc || userData.ifscCode || getIfscByBranch(finalBranch);
+  const finalCif = userData.cif || userData.cifNumber || generateCifNumber();
+
   const customerPayload = await normalizeRecord("customer", {
     id: userData.id || makeId("CUS"),
     name: userData.name || userData.customerName || "Customer",
@@ -369,18 +418,18 @@ const syncUserToCustomerRecord = async (userData: any) => {
     email,
     phone: userData.phone || userData.phoneNumber || "",
     phoneNumber: userData.phoneNumber || userData.phone || "",
-    accountNumber: userData.accountNumber || "",
+    accountNumber: finalAccountNumber,
     accountType: userData.accountType || "Savings Account",
-    ifsc: userData.ifsc || userData.ifscCode || "",
-    ifscCode: userData.ifscCode || userData.ifsc || "",
-    cif: userData.cif || userData.cifNumber || "",
-    cifNumber: userData.cifNumber || userData.cif || "",
+    ifsc: finalIfsc,
+    ifscCode: finalIfsc,
+    cif: finalCif,
+    cifNumber: finalCif,
     aadhaarNumber: userData.aadhaarNumber || "",
     panNumber: userData.panNumber || "",
     balance: cleanMoney(userData.balance),
     totalIncome: cleanMoney(userData.totalIncome),
     totalExpense: cleanMoney(userData.totalExpense),
-    branch: userData.branch || "Main Branch",
+    branch: finalBranch,
     assignedEmployee: userData.assignedEmployee || userData.employee || "",
     kyc: userData.kyc || "Pending",
     status: userData.status || "Active",
@@ -388,9 +437,6 @@ const syncUserToCustomerRecord = async (userData: any) => {
 
   const createdAtForInsert = customerPayload.createdAt || new Date();
 
-  // VERY IMPORTANT:
-  // Remove createdAt from $set because MongoDB cannot update createdAt in both
-  // $set and $setOnInsert at the same time.
   delete customerPayload.createdAt;
 
   await customersCollection.updateOne(
@@ -661,6 +707,11 @@ app.post("/api/auth/register", async (req: any, res: any) => {
 
     const userId = makeId("CUS");
 
+    const finalBranch = branch || "Main Branch";
+    const finalAccountNumber = accountNumber || generateAccountNumber();
+    const finalIfsc = ifsc || ifscCode || getIfscByBranch(finalBranch);
+    const finalCif = cif || cifNumber || generateCifNumber();
+
     const hashedPassword = await bcrypt.hash(String(password), 10);
 
     const userPayload = {
@@ -674,16 +725,16 @@ app.post("/api/auth/register", async (req: any, res: any) => {
       phoneNumber: phoneNumber || phone || "",
       aadhaarNumber: aadhaarNumber || "",
       panNumber: panNumber ? String(panNumber).toUpperCase() : "",
-      accountNumber: accountNumber || "",
+      accountNumber: finalAccountNumber,
       accountType: accountType || "Savings Account",
-      ifsc: ifsc || ifscCode || "",
-      ifscCode: ifscCode || ifsc || "",
-      cif: cif || cifNumber || "",
-      cifNumber: cifNumber || cif || "",
+      ifsc: finalIfsc,
+      ifscCode: finalIfsc,
+      cif: finalCif,
+      cifNumber: finalCif,
       balance: 0,
       totalIncome: 0,
       totalExpense: 0,
-      branch: branch || "Main Branch",
+      branch: finalBranch,
       kyc: "Pending",
       status: "Active",
       createdAt: new Date(),
