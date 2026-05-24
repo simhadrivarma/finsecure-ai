@@ -103,6 +103,58 @@ app.post("/api/customers", async (req: any, res: any) => {
   // customer route code
 });
 
+/* ===============================
+   ADMIN CRUD FALLBACK ROUTES
+   This makes all AdminPanel buttons work
+================================ */
+
+const createAdminCrudFallbackRoutes = require("./routes/adminCrudFallbackRoutes");
+
+app.use(
+  "/api/admins",
+  createAdminCrudFallbackRoutes("admin", "admins")
+);
+
+app.use(
+  "/api/employees",
+  createAdminCrudFallbackRoutes("employee", "employees")
+);
+
+app.use(
+  "/api/branches",
+  createAdminCrudFallbackRoutes("branch", "branches")
+);
+
+app.use(
+  "/api/customers",
+  createAdminCrudFallbackRoutes("customer", "customers")
+);
+
+app.use(
+  "/api/loans",
+  createAdminCrudFallbackRoutes("loan", "loans")
+);
+
+app.use(
+  "/api/admin-transactions",
+  createAdminCrudFallbackRoutes("transaction", "admintransactions")
+);
+
+app.use(
+  "/api/reports",
+  createAdminCrudFallbackRoutes("report", "reports")
+);
+
+app.use(
+  "/api/audit-logs",
+  createAdminCrudFallbackRoutes("auditLog", "auditlogs")
+);
+
+app.use(
+  "/api/dashboard",
+  createAdminCrudFallbackRoutes.createDashboardRouter()
+);
+
 // ❌ 404 handler must stay below customer routes
 app.use((req: any, res: any) => {
   res.status(404).json({
