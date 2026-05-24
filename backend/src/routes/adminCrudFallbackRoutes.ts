@@ -3,19 +3,16 @@ const express = require("express");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-const looseSchema = new mongoose.Schema(
-  {},
-  {
-    strict: false,
-    timestamps: true,
-  }
-);
+const waitForDatabase = async () => {
+  if (mongoose.connection.readyState === 1) return;
 
-const getLooseModel = (modelName: string, collectionName: string) => {
-  return (
-    mongoose.models[modelName] ||
-    mongoose.model(modelName, looseSchema, collectionName)
-  );
+  if (mongoose.connection.asPromise) {
+    await mongoose.connection.asPromise();
+  }
+};
+
+const makeId = (prefix: string) => {
+  return `${prefix}${Date.now().toString().slice(-8)}`;
 };
 
 const cleanMoney = (value: any) => {
@@ -28,11 +25,7 @@ const cleanMoney = (value: any) => {
   return Number.isNaN(numberValue) ? value : numberValue;
 };
 
-const makeId = (prefix: string) => {
-  return `${prefix}${Date.now().toString().slice(-8)}`;
-};
-
-const idPrefix = {
+const idPrefix: any = {
   admin: "ADM",
   employee: "EMP",
   branch: "BR",
@@ -44,10 +37,12 @@ const idPrefix = {
 };
 
 const normalizeRecord = async (entity: string, body: any, oldRecord: any = {}) => {
-  const data = {
+  const data: any = {
     ...oldRecord,
     ...body,
   };
+
+  delete data._id;
 
   if (!data.id) {
     data.id = makeId(idPrefix[entity] || "REC");
@@ -90,22 +85,33 @@ const normalizeRecord = async (entity: string, body: any, oldRecord: any = {}) =
   if (entity === "customer") {
     data.name = data.name || data.customerName || "";
     data.customerName = data.customerName || data.name || "";
+
     data.email = data.email ? String(data.email).toLowerCase().trim() : "";
+
     data.phone = data.phone || data.phoneNumber || "";
     data.phoneNumber = data.phoneNumber || data.phone || "";
+
     data.accountNumber = String(data.accountNumber || "").trim();
     data.accountType = data.accountType || "Savings Account";
+
     data.ifsc = data.ifsc || data.ifscCode || "";
     data.ifscCode = data.ifscCode || data.ifsc || "";
+
     data.cif = data.cif || data.cifNumber || "";
     data.cifNumber = data.cifNumber || data.cif || "";
+
+    data.aadhaarNumber = data.aadhaarNumber || "";
+    data.panNumber = data.panNumber ? String(data.panNumber).toUpperCase() : "";
+
     data.balance = cleanMoney(data.balance);
     data.totalIncome = cleanMoney(data.totalIncome);
     data.totalExpense = cleanMoney(data.totalExpense);
+
     data.branch = data.branch || "Main Branch";
     data.assignedEmployee =
       data.assignedEmployee || data.employee || data.assignedEmployeeName || "";
     data.employee = data.employee || data.assignedEmployee || "";
+
     data.kyc = data.kyc || "Pending";
     data.status = data.status || "Active";
   }
@@ -157,43 +163,59 @@ const normalizeRecord = async (entity: string, body: any, oldRecord: any = {}) =
     data.status = data.status || "Success";
   }
 
+  data.updatedAt = new Date();
+
+  if (!data.createdAt) {
+    data.createdAt = new Date();
+  }
+
   return data;
 };
 
 const formatRecord = (record: any) => {
-  const obj = record.toObject ? record.toObject() : { ...record };
+  const obj = { ...record };
+
+  if (obj._id) {
+    obj._id = String(obj._id);
+  }
 
   return {
     ...obj,
-    id: obj.id || String(obj._id),
+    id: obj.id || String(obj._id || ""),
   };
 };
 
-const findByAnyId = async (Model: any, id: string) => {
-  let record = null;
+const buildIdQuery = (id: string) => {
+  const or: any[] = [{ id }, { accountNumber: id }];
 
   if (mongoose.Types.ObjectId.isValid(id)) {
-    record = await Model.findById(id);
+    or.push({ _id: new mongoose.Types.ObjectId(id) });
   }
 
-  if (!record) {
-    record = await Model.findOne({ id });
+  return { $or: or };
+};
+
+const getCollection = async (collectionName: string) => {
+  await waitForDatabase();
+
+  if (!mongoose.connection.db) {
+    throw new Error("MongoDB connection is not ready");
   }
 
-  if (!record) {
-    record = await Model.findOne({ accountNumber: id });
-  }
-
-  return record;
+  return mongoose.connection.db.collection(collectionName);
 };
 
 const createCrudRouter = (entity: string, collectionName: string) => {
   const router = express.Router();
-  const Model = getLooseModel(`Fallback_${entity}`, collectionName);
 
   router.get("/", async (req: any, res: any) => {
     try {
-      const rows = await Model.find({}).sort({ createdAt: -1 });
+      const collection = await getCollection(collectionName);
+
+      const rows = await collection
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray();
 
       return res.status(200).json({
         success: true,
@@ -201,6 +223,7 @@ const createCrudRouter = (entity: string, collectionName: string) => {
         data: rows.map(formatRecord),
       });
     } catch (error: any) {
+      console.error(`${entity} GET failed:`, error);
       return res.status(500).json({
         success: false,
         message: error.message || `Failed to load ${entity}`,
@@ -210,16 +233,36 @@ const createCrudRouter = (entity: string, collectionName: string) => {
 
   router.post("/", async (req: any, res: any) => {
     try {
+      const collection = await getCollection(collectionName);
       const payload = await normalizeRecord(entity, req.body);
 
-      const record = await Model.create(payload);
+      if (entity === "customer" && !payload.name) {
+        return res.status(400).json({
+          success: false,
+          message: "Customer name is required",
+        });
+      }
+
+      if (entity === "customer" && !payload.accountNumber) {
+        return res.status(400).json({
+          success: false,
+          message: "Account number is required",
+        });
+      }
+
+      const inserted = await collection.insertOne(payload);
+
+      const created = await collection.findOne({
+        _id: inserted.insertedId,
+      });
 
       return res.status(201).json({
         success: true,
         message: `${entity} created successfully`,
-        data: formatRecord(record),
+        data: formatRecord(created || payload),
       });
     } catch (error: any) {
+      console.error(`${entity} POST failed:`, error);
       return res.status(500).json({
         success: false,
         message: error.message || `Failed to create ${entity}`,
@@ -229,7 +272,9 @@ const createCrudRouter = (entity: string, collectionName: string) => {
 
   router.get("/:id", async (req: any, res: any) => {
     try {
-      const record = await findByAnyId(Model, req.params.id);
+      const collection = await getCollection(collectionName);
+
+      const record = await collection.findOne(buildIdQuery(req.params.id));
 
       if (!record) {
         return res.status(404).json({
@@ -243,6 +288,7 @@ const createCrudRouter = (entity: string, collectionName: string) => {
         data: formatRecord(record),
       });
     } catch (error: any) {
+      console.error(`${entity} GET ONE failed:`, error);
       return res.status(500).json({
         success: false,
         message: error.message || `Failed to load ${entity}`,
@@ -252,26 +298,32 @@ const createCrudRouter = (entity: string, collectionName: string) => {
 
   router.put("/:id", async (req: any, res: any) => {
     try {
-      const record = await findByAnyId(Model, req.params.id);
+      const collection = await getCollection(collectionName);
 
-      if (!record) {
+      const existing = await collection.findOne(buildIdQuery(req.params.id));
+
+      if (!existing) {
         return res.status(404).json({
           success: false,
           message: `${entity} not found`,
         });
       }
 
-      const payload = await normalizeRecord(entity, req.body, record.toObject());
+      const payload = await normalizeRecord(entity, req.body, existing);
 
-      Object.assign(record, payload);
-      await record.save();
+      await collection.updateOne(buildIdQuery(req.params.id), {
+        $set: payload,
+      });
+
+      const updated = await collection.findOne(buildIdQuery(req.params.id));
 
       return res.status(200).json({
         success: true,
         message: `${entity} updated successfully`,
-        data: formatRecord(record),
+        data: formatRecord(updated || payload),
       });
     } catch (error: any) {
+      console.error(`${entity} PUT failed:`, error);
       return res.status(500).json({
         success: false,
         message: error.message || `Failed to update ${entity}`,
@@ -281,13 +333,16 @@ const createCrudRouter = (entity: string, collectionName: string) => {
 
   router.delete("/", async (req: any, res: any) => {
     try {
-      await Model.deleteMany({});
+      const collection = await getCollection(collectionName);
+
+      await collection.deleteMany({});
 
       return res.status(200).json({
         success: true,
         message: `${entity} records cleared successfully`,
       });
     } catch (error: any) {
+      console.error(`${entity} DELETE ALL failed:`, error);
       return res.status(500).json({
         success: false,
         message: error.message || `Failed to clear ${entity}`,
@@ -297,22 +352,23 @@ const createCrudRouter = (entity: string, collectionName: string) => {
 
   router.delete("/:id", async (req: any, res: any) => {
     try {
-      const record = await findByAnyId(Model, req.params.id);
+      const collection = await getCollection(collectionName);
 
-      if (!record) {
+      const result = await collection.deleteOne(buildIdQuery(req.params.id));
+
+      if (!result.deletedCount) {
         return res.status(404).json({
           success: false,
           message: `${entity} not found`,
         });
       }
 
-      await record.deleteOne();
-
       return res.status(200).json({
         success: true,
         message: `${entity} deleted successfully`,
       });
     } catch (error: any) {
+      console.error(`${entity} DELETE failed:`, error);
       return res.status(500).json({
         success: false,
         message: error.message || `Failed to delete ${entity}`,
@@ -326,19 +382,16 @@ const createCrudRouter = (entity: string, collectionName: string) => {
 const createDashboardRouter = () => {
   const router = express.Router();
 
-  const Customer = getLooseModel("Fallback_dashboard_customers", "customers");
-  const Employee = getLooseModel("Fallback_dashboard_employees", "employees");
-  const Branch = getLooseModel("Fallback_dashboard_branches", "branches");
-  const Loan = getLooseModel("Fallback_dashboard_loans", "loans");
-  const Transaction = getLooseModel(
-    "Fallback_dashboard_admin_transactions",
-    "admintransactions"
-  );
-  const Report = getLooseModel("Fallback_dashboard_reports", "reports");
-  const AuditLog = getLooseModel("Fallback_dashboard_auditlogs", "auditlogs");
-
   router.get("/", async (req: any, res: any) => {
     try {
+      const customersCollection = await getCollection("customers");
+      const employeesCollection = await getCollection("employees");
+      const branchesCollection = await getCollection("branches");
+      const loansCollection = await getCollection("loans");
+      const transactionsCollection = await getCollection("admintransactions");
+      const reportsCollection = await getCollection("reports");
+      const auditLogsCollection = await getCollection("auditlogs");
+
       const [
         customers,
         employees,
@@ -348,13 +401,13 @@ const createDashboardRouter = () => {
         reports,
         auditLogs,
       ] = await Promise.all([
-        Customer.find({}),
-        Employee.find({}),
-        Branch.find({}),
-        Loan.find({}),
-        Transaction.find({}).sort({ createdAt: -1 }).limit(5),
-        Report.find({}),
-        AuditLog.find({}),
+        customersCollection.find({}).toArray(),
+        employeesCollection.find({}).toArray(),
+        branchesCollection.find({}).toArray(),
+        loansCollection.find({}).toArray(),
+        transactionsCollection.find({}).sort({ createdAt: -1 }).limit(5).toArray(),
+        reportsCollection.find({}).toArray(),
+        auditLogsCollection.find({}).toArray(),
       ]);
 
       const totalBalance = customers.reduce(
@@ -376,8 +429,7 @@ const createDashboardRouter = () => {
         success: true,
         data: {
           totalCustomers: customers.length,
-          activeCustomers: customers.filter((c: any) => c.status === "Active")
-            .length,
+          activeCustomers: customers.filter((c: any) => c.status === "Active").length,
           totalEmployees: employees.length,
           totalBranches: branches.length,
           totalLoans: loans.length,
@@ -401,6 +453,7 @@ const createDashboardRouter = () => {
         },
       });
     } catch (error: any) {
+      console.error("dashboard GET failed:", error);
       return res.status(500).json({
         success: false,
         message: error.message || "Dashboard failed",
