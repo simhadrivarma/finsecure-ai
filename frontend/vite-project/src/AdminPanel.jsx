@@ -2562,6 +2562,63 @@ const branchRows = useMemo(() => {
     }
   };
 
+  const saveEntity = async (form) => {
+  try {
+    const type = modal.type;
+    const config = configs[type];
+    const isEdit = modal.mode === "edit";
+
+    const response = await fetch(
+      isEdit ? `${config.api}/${form.id}` : config.api,
+      {
+        method: isEdit ? "PUT" : "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(form),
+      }
+    );
+
+    const result = await response.json();
+
+    if (isAuthOrPermissionError(response)) {
+      throw new Error(
+        result.message || "Access denied or session check failed. Please try again."
+      );
+    }
+
+    if (!response.ok) {
+      throw new Error(result.message || "Save failed");
+    }
+
+    const savedRecord = result.data || form;
+    const targetName = getRecordLabel(savedRecord, config.title);
+
+    if (type !== "auditLog") {
+      await createAuditLog({
+        action: isEdit ? "Updated" : "Created",
+        module: config.pageTitle || config.title,
+        targetName,
+        description: `${admin?.name || "Admin"} ${
+          isEdit ? "updated" : "created"
+        } ${config.title}: ${targetName}`,
+        status: "Success",
+      });
+    }
+
+    await loadEntity(type);
+    await loadEntity("auditLog");
+    await loadDashboard();
+
+    setModal({
+      open: false,
+      type: "",
+      mode: "add",
+      item: null,
+    });
+  } catch (err) {
+    alert(err.message || "Save failed");
+  }
+};
+
   useEffect(() => {
     if (!admin || !token) return;
 
@@ -2601,75 +2658,103 @@ const branchRows = useMemo(() => {
 
 
   const saveEntity = async (form) => {
-    try {
-      const type = modal.type;
-      const config = configs[type];
-      const isEdit = modal.mode === "edit";
+  try {
+    const type = modal.type;
+    const config = configs[type];
+    const isEdit = modal.mode === "edit";
 
-      const response = await fetch(
-        isEdit ? `${config.api}/${form.id}` : config.api,
-        {
-          method: isEdit ? "PUT" : "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify(form),
-        }
+    const response = await fetch(
+      isEdit ? `${config.api}/${form.id}` : config.api,
+      {
+        method: isEdit ? "PUT" : "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(form),
+      }
+    );
+
+    const result = await response.json();
+
+    if (isAuthOrPermissionError(response)) {
+      throw new Error(
+        result.message || "Access denied or session check failed. Please try again."
       );
-
-      const result = await response.json();
-
-      if (isAuthOrPermissionError(response)) {
-        throw new Error(
-          result.message || "Access denied or session check failed. Please try again."
-        );
-      }
-
-      if (!response.ok) {
-        throw new Error(result.message || "Save failed");
-      }
-
-      await loadEntity(type);
-      await loadDashboard();
-
-      setModal({
-        open: false,
-        type: "",
-        mode: "add",
-        item: null,
-      });
-    } catch (err) {
-      alert(err.message || "Save failed");
     }
-  };
+
+    if (!response.ok) {
+      throw new Error(result.message || "Save failed");
+    }
+
+    const savedRecord = result.data || form;
+    const targetName = getRecordLabel(savedRecord, config.title);
+
+    if (type !== "auditLog") {
+      await createAuditLog({
+        action: isEdit ? "Updated" : "Created",
+        module: config.pageTitle || config.title,
+        targetName,
+        description: `${admin?.name || "Admin"} ${
+          isEdit ? "updated" : "created"
+        } ${config.title}: ${targetName}`,
+        status: "Success",
+      });
+    }
+
+    await loadEntity(type);
+    await loadEntity("auditLog");
+    await loadDashboard();
+
+    setModal({
+      open: false,
+      type: "",
+      mode: "add",
+      item: null,
+    });
+  } catch (err) {
+    alert(err.message || "Save failed");
+  }
+};
 
   const deleteEntity = async (type, item) => {
-    const label = item.name || item.customer || item.title || item.id;
+  const config = configs[type];
+  const label = getRecordLabel(item, config?.title || "Record");
 
-    if (!window.confirm(`Delete ${label}?`)) return;
+  if (!window.confirm(`Delete ${label}?`)) return;
 
-    try {
-      const response = await fetch(`${configs[type].api}/${item.id}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
+  try {
+    const response = await fetch(`${configs[type].api}/${item.id}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
 
-      const result = await response.json();
+    const result = await response.json();
 
-      if (isAuthOrPermissionError(response)) {
-        throw new Error(
-          result.message || "Access denied or session check failed. Please try again."
-        );
-      }
-
-      if (!response.ok) {
-        throw new Error(result.message || "Delete failed");
-      }
-
-      await loadEntity(type);
-      await loadDashboard();
-    } catch (err) {
-      alert(err.message || "Delete failed");
+    if (isAuthOrPermissionError(response)) {
+      throw new Error(
+        result.message || "Access denied or session check failed. Please try again."
+      );
     }
-  };
+
+    if (!response.ok) {
+      throw new Error(result.message || "Delete failed");
+    }
+
+    if (type !== "auditLog") {
+      await createAuditLog({
+        action: "Deleted",
+        module: config.pageTitle || config.title,
+        targetName: label,
+        description: `${admin?.name || "Admin"} deleted ${config.title}: ${label}`,
+        status: "Success",
+      });
+    }
+
+    await loadEntity(type);
+    await loadEntity("auditLog");
+    await loadDashboard();
+  } catch (err) {
+    alert(err.message || "Delete failed");
+  }
+};
 
   const clearAuditLogs = async () => {
     if (!window.confirm("Clear all audit logs?")) return;
