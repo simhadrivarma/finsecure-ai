@@ -1,5 +1,4 @@
 // @ts-nocheck
-import adminAiRoutes from "./routes/adminAiRoutes";
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -1204,18 +1203,23 @@ mountRoute(
   "AI ROUTES"
 );
 
-const adminAiModule = require("./routes/adminAiRoutes");
-const adminAiRoutes = adminAiModule.default || adminAiModule;
-
-app.use("/api/admin-ai", adminAiRoutes);
+app.post("/api/admin-ai/chat", async (req: any, res: any) => {
+  try {
+    return res.status(200).json({
+      success: true,
+      answer: "Admin AI backend route is connected successfully.",
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Admin AI failed.",
+    });
+  }
+});
 
 /* ===============================
    404 HANDLER
 ================================ */
-const adminAiModule = require("./routes/adminAiRoutes");
-const adminAiRoutes = adminAiModule.default || adminAiModule;
-
-app.use("/api/admin-ai", adminAiRoutes);
 
 app.use((req: any, res: any) => {
   return res.status(404).json({
