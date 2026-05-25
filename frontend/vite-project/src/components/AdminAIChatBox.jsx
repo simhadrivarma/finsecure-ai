@@ -33,6 +33,19 @@ export default function AdminAIChatBox({ admin, role, activePage }) {
     },
   ]);
 
+  const suggestedQuestions = [
+  "How many customers do we have?",
+  "How many employees do we have?",
+  "How many branches do we have?",
+  "How many loans do we have?",
+  "Show complete bank summary",
+  "Show customer Teja details",
+  "Show branch Gajuwaka details",
+  "Show latest transactions",
+  "Show audit logs",
+  "Calculate EMI for 500000 loan at 12% for 5 years",
+];
+
   const sendMessage = async () => {
     const question = input.trim();
 
