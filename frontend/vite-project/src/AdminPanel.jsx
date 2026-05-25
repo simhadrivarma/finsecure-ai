@@ -2407,6 +2407,77 @@ export default function App() {
     [data]
   );
 
+  const cleanNumber = (value) => {
+  const numberValue = Number(
+    String(value || "0")
+      .replace(/₹/g, "")
+      .replace(/,/g, "")
+      .trim()
+  );
+
+  return Number.isNaN(numberValue) ? 0 : numberValue;
+};
+
+const cleanText = (value) => {
+  return String(value || "").trim().toLowerCase();
+};
+
+const formatMoney = (value) => {
+  return `₹${Number(value || 0).toLocaleString("en-IN")}`;
+};
+
+const branchRows = useMemo(() => {
+  return (data.branch || []).map((branch) => {
+    const branchName = cleanText(branch.name || branch.branchName);
+    const branchIfsc = cleanText(branch.ifsc || branch.ifscCode);
+
+    const branchEmployees = (data.employee || []).filter((employee) => {
+      return (
+        cleanText(employee.branch) === branchName ||
+        cleanText(employee.ifsc || employee.ifscCode) === branchIfsc
+      );
+    });
+
+    const branchCustomers = (data.customer || []).filter((customer) => {
+      return (
+        cleanText(customer.branch) === branchName ||
+        cleanText(customer.ifsc || customer.ifscCode) === branchIfsc
+      );
+    });
+
+    const customerAccountNumbers = new Set(
+      branchCustomers
+        .map((customer) => String(customer.accountNumber || "").trim())
+        .filter(Boolean)
+    );
+
+    const branchLoans = (data.loan || []).filter((loan) => {
+      return (
+        cleanText(loan.branch) === branchName ||
+        cleanText(loan.ifsc || loan.ifscCode) === branchIfsc ||
+        customerAccountNumbers.has(String(loan.accountNumber || "").trim())
+      );
+    });
+
+    const totalBalance = branchCustomers.reduce((sum, customer) => {
+      return sum + cleanNumber(customer.balance);
+    }, 0);
+
+    const totalLoans = branchLoans.reduce((sum, loan) => {
+      return sum + cleanNumber(loan.amount || loan.loans || loan.pending);
+    }, 0);
+
+    return {
+      ...branch,
+      employees: branchEmployees.length,
+      customers: branchCustomers.length,
+      balance: formatMoney(totalBalance),
+      loans: formatMoney(totalLoans),
+    };
+  });
+}, [data.branch, data.employee, data.customer, data.loan]);
+
+
   useEffect(() => {
     const storedAdmin = getStoredAdmin();
     const storedToken = getStoredToken();
@@ -2510,6 +2581,24 @@ export default function App() {
       setActivePage("dashboard");
     }
   }, [admin, token, activePage, allowedPages]);
+
+  useEffect(() => {
+  if (!admin || !token || activePage !== "branch") return;
+
+  const refreshBranchStats = () => {
+    loadEntity("branch");
+    loadEntity("employee");
+    loadEntity("customer");
+    loadEntity("loan");
+  };
+
+  refreshBranchStats();
+
+  const timer = setInterval(refreshBranchStats, 15000);
+
+  return () => clearInterval(timer);
+}, [admin, token, activePage]);
+
 
   const saveEntity = async (form) => {
     try {
@@ -2741,7 +2830,7 @@ export default function App() {
     return (
       <EntityPage
         config={configs[activePage]}
-        rows={data[activePage] || []}
+        rows={activePage === "branch" ? branchRows : data[activePage] || []}
         search={search}
         loading={loading[activePage]}
         filters={filters[activePage] || {}}
