@@ -387,12 +387,7 @@ const configs = {
       { name: "ifsc", label: "IFSC Code", required: true },
       { name: "cif", label: "CIF Number", required: true },
       { name: "balance", label: "Balance", defaultValue: "₹0" },
-      {
-  name: "branch",
-  label: "Branch Name",
-  type: "branchSelect",
-  required: true,
-},
+      { name: "branch", label: "Branch", required: true },
       { name: "employee", label: "Assigned Employee" },
       {
         name: "kyc",
@@ -2408,75 +2403,85 @@ export default function App() {
   );
 
   const cleanNumber = (value) => {
-  const numberValue = Number(
-    String(value || "0")
-      .replace(/₹/g, "")
-      .replace(/,/g, "")
-      .trim()
-  );
-
-  return Number.isNaN(numberValue) ? 0 : numberValue;
-};
-
-const cleanText = (value) => {
-  return String(value || "").trim().toLowerCase();
-};
-
-const formatMoney = (value) => {
-  return `₹${Number(value || 0).toLocaleString("en-IN")}`;
-};
-
-const branchRows = useMemo(() => {
-  return (data.branch || []).map((branch) => {
-    const branchName = cleanText(branch.name || branch.branchName);
-    const branchIfsc = cleanText(branch.ifsc || branch.ifscCode);
-
-    const branchEmployees = (data.employee || []).filter((employee) => {
-      return (
-        cleanText(employee.branch) === branchName ||
-        cleanText(employee.ifsc || employee.ifscCode) === branchIfsc
-      );
-    });
-
-    const branchCustomers = (data.customer || []).filter((customer) => {
-      return (
-        cleanText(customer.branch) === branchName ||
-        cleanText(customer.ifsc || customer.ifscCode) === branchIfsc
-      );
-    });
-
-    const customerAccountNumbers = new Set(
-      branchCustomers
-        .map((customer) => String(customer.accountNumber || "").trim())
-        .filter(Boolean)
+    const numberValue = Number(
+      String(value || "0")
+        .replace(/₹/g, "")
+        .replace(/,/g, "")
+        .trim()
     );
 
-    const branchLoans = (data.loan || []).filter((loan) => {
-      return (
-        cleanText(loan.branch) === branchName ||
-        cleanText(loan.ifsc || loan.ifscCode) === branchIfsc ||
-        customerAccountNumbers.has(String(loan.accountNumber || "").trim())
+    return Number.isNaN(numberValue) ? 0 : numberValue;
+  };
+
+  const cleanText = (value) => String(value || "").trim().toLowerCase();
+
+  const formatMoneyForTable = (value) => {
+    return `₹${Number(value || 0).toLocaleString("en-IN")}`;
+  };
+
+  const getRecordLabel = (item, fallback = "Record") => {
+    return (
+      item?.name ||
+      item?.customer ||
+      item?.title ||
+      item?.email ||
+      item?.accountNumber ||
+      item?.id ||
+      item?._id ||
+      fallback
+    );
+  };
+
+  const branchRows = useMemo(() => {
+    return (data.branch || []).map((branch) => {
+      const branchName = cleanText(branch.name || branch.branchName);
+      const branchIfsc = cleanText(branch.ifsc || branch.ifscCode);
+
+      const branchEmployees = (data.employee || []).filter((employee) => {
+        return (
+          cleanText(employee.branch) === branchName ||
+          cleanText(employee.ifsc || employee.ifscCode) === branchIfsc
+        );
+      });
+
+      const branchCustomers = (data.customer || []).filter((customer) => {
+        return (
+          cleanText(customer.branch) === branchName ||
+          cleanText(customer.ifsc || customer.ifscCode) === branchIfsc
+        );
+      });
+
+      const customerAccountNumbers = new Set(
+        branchCustomers
+          .map((customer) => String(customer.accountNumber || "").trim())
+          .filter(Boolean)
       );
+
+      const branchLoans = (data.loan || []).filter((loan) => {
+        return (
+          cleanText(loan.branch) === branchName ||
+          cleanText(loan.ifsc || loan.ifscCode) === branchIfsc ||
+          customerAccountNumbers.has(String(loan.accountNumber || "").trim())
+        );
+      });
+
+      const totalBalance = branchCustomers.reduce((sum, customer) => {
+        return sum + cleanNumber(customer.balance);
+      }, 0);
+
+      const totalLoans = branchLoans.reduce((sum, loan) => {
+        return sum + cleanNumber(loan.amount || loan.loanAmount || loan.loans || loan.pending);
+      }, 0);
+
+      return {
+        ...branch,
+        employees: branchEmployees.length,
+        customers: branchCustomers.length,
+        balance: formatMoneyForTable(totalBalance),
+        loans: formatMoneyForTable(totalLoans),
+      };
     });
-
-    const totalBalance = branchCustomers.reduce((sum, customer) => {
-      return sum + cleanNumber(customer.balance);
-    }, 0);
-
-    const totalLoans = branchLoans.reduce((sum, loan) => {
-      return sum + cleanNumber(loan.amount || loan.loans || loan.pending);
-    }, 0);
-
-    return {
-      ...branch,
-      employees: branchEmployees.length,
-      customers: branchCustomers.length,
-      balance: formatMoney(totalBalance),
-      loans: formatMoney(totalLoans),
-    };
-  });
-}, [data.branch, data.employee, data.customer, data.loan]);
-
+  }, [data.branch, data.employee, data.customer, data.loan]);
 
   useEffect(() => {
     const storedAdmin = getStoredAdmin();
@@ -2562,62 +2567,46 @@ const branchRows = useMemo(() => {
     }
   };
 
-  const saveEntity = async (form) => {
-  try {
-    const type = modal.type;
-    const config = configs[type];
-    const isEdit = modal.mode === "edit";
+  const createAuditLog = async ({
+    action,
+    module,
+    targetName,
+    description,
+    status = "Success",
+  }) => {
+    const localLog = {
+      id: `LOG${Date.now()}`,
+      action,
+      module,
+      adminName: admin?.name || "FinSecure Super Admin",
+      adminEmail: admin?.email || "admin@finsecure.ai",
+      adminRole: adminRole || "Super Admin",
+      description,
+      targetName: targetName || "-",
+      status,
+      createdAt: new Date().toISOString(),
+    };
 
-    const response = await fetch(
-      isEdit ? `${config.api}/${form.id}` : config.api,
-      {
-        method: isEdit ? "PUT" : "POST",
+    try {
+      const response = await fetch(API.auditLog, {
+        method: "POST",
         headers: getAuthHeaders(),
-        body: JSON.stringify(form),
-      }
-    );
-
-    const result = await response.json();
-
-    if (isAuthOrPermissionError(response)) {
-      throw new Error(
-        result.message || "Access denied or session check failed. Please try again."
-      );
-    }
-
-    if (!response.ok) {
-      throw new Error(result.message || "Save failed");
-    }
-
-    const savedRecord = result.data || form;
-    const targetName = getRecordLabel(savedRecord, config.title);
-
-    if (type !== "auditLog") {
-      await createAuditLog({
-        action: isEdit ? "Updated" : "Created",
-        module: config.pageTitle || config.title,
-        targetName,
-        description: `${admin?.name || "Admin"} ${
-          isEdit ? "updated" : "created"
-        } ${config.title}: ${targetName}`,
-        status: "Success",
+        body: JSON.stringify(localLog),
       });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        console.warn("Audit log save failed:", result.message || response.statusText);
+      }
+    } catch (error) {
+      console.error("Audit log error:", error);
     }
 
-    await loadEntity(type);
-    await loadEntity("auditLog");
-    await loadDashboard();
-
-    setModal({
-      open: false,
-      type: "",
-      mode: "add",
-      item: null,
-    });
-  } catch (err) {
-    alert(err.message || "Save failed");
-  }
-};
+    setData((prev) => ({
+      ...prev,
+      auditLog: [localLog, ...(prev.auditLog || [])],
+    }));
+  };
 
   useEffect(() => {
     if (!admin || !token) return;
@@ -2639,122 +2628,104 @@ const branchRows = useMemo(() => {
     }
   }, [admin, token, activePage, allowedPages]);
 
-  useEffect(() => {
-  if (!admin || !token || activePage !== "branch") return;
+  const saveEntity = async (form) => {
+    try {
+      const type = modal.type;
+      const config = configs[type];
+      const isEdit = modal.mode === "edit";
 
-  const refreshBranchStats = () => {
-    loadEntity("branch");
-    loadEntity("employee");
-    loadEntity("customer");
-    loadEntity("loan");
+      const response = await fetch(
+        isEdit ? `${config.api}/${form.id}` : config.api,
+        {
+          method: isEdit ? "PUT" : "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(form),
+        }
+      );
+
+      const result = await response.json();
+
+      if (isAuthOrPermissionError(response)) {
+        throw new Error(
+          result.message || "Access denied or session check failed. Please try again."
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || "Save failed");
+      }
+
+      const savedRecord = result.data || form;
+      const targetName = getRecordLabel(savedRecord, config.title);
+
+      if (type !== "auditLog") {
+        await createAuditLog({
+          action: isEdit ? "Updated" : "Created",
+          module: config.pageTitle || config.title,
+          targetName,
+          description: `${admin?.name || "Admin"} ${
+            isEdit ? "updated" : "created"
+          } ${config.title}: ${targetName}`,
+          status: "Success",
+        });
+      }
+
+      await loadEntity(type);
+      await loadEntity("auditLog");
+      await loadDashboard();
+
+      setModal({
+        open: false,
+        type: "",
+        mode: "add",
+        item: null,
+      });
+    } catch (err) {
+      alert(err.message || "Save failed");
+    }
   };
 
-  refreshBranchStats();
-
-  const timer = setInterval(refreshBranchStats, 15000);
-
-  return () => clearInterval(timer);
-}, [admin, token, activePage]);
-
-
-  const saveEntity = async (form) => {
-  try {
-    const type = modal.type;
-    const config = configs[type];
-    const isEdit = modal.mode === "edit";
-
-    const response = await fetch(
-      isEdit ? `${config.api}/${form.id}` : config.api,
-      {
-        method: isEdit ? "PUT" : "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(form),
-      }
-    );
-
-    const result = await response.json();
-
-    if (isAuthOrPermissionError(response)) {
-      throw new Error(
-        result.message || "Access denied or session check failed. Please try again."
-      );
-    }
-
-    if (!response.ok) {
-      throw new Error(result.message || "Save failed");
-    }
-
-    const savedRecord = result.data || form;
-    const targetName = getRecordLabel(savedRecord, config.title);
-
-    if (type !== "auditLog") {
-      await createAuditLog({
-        action: isEdit ? "Updated" : "Created",
-        module: config.pageTitle || config.title,
-        targetName,
-        description: `${admin?.name || "Admin"} ${
-          isEdit ? "updated" : "created"
-        } ${config.title}: ${targetName}`,
-        status: "Success",
-      });
-    }
-
-    await loadEntity(type);
-    await loadEntity("auditLog");
-    await loadDashboard();
-
-    setModal({
-      open: false,
-      type: "",
-      mode: "add",
-      item: null,
-    });
-  } catch (err) {
-    alert(err.message || "Save failed");
-  }
-};
-
   const deleteEntity = async (type, item) => {
-  const config = configs[type];
-  const label = getRecordLabel(item, config?.title || "Record");
+    const config = configs[type];
+    const label = getRecordLabel(item, config?.title || "Record");
 
-  if (!window.confirm(`Delete ${label}?`)) return;
+    if (!window.confirm(`Delete ${label}?`)) return;
 
-  try {
-    const response = await fetch(`${configs[type].api}/${item.id}`, {
-      method: "DELETE",
-      headers: getAuthHeaders(),
-    });
-
-    const result = await response.json();
-
-    if (isAuthOrPermissionError(response)) {
-      throw new Error(
-        result.message || "Access denied or session check failed. Please try again."
-      );
-    }
-
-    if (!response.ok) {
-      throw new Error(result.message || "Delete failed");
-    }
-
-    if (type !== "auditLog") {
-      await createAuditLog({
-        action: "Deleted",
-        module: config.pageTitle || config.title,
-        targetName: label,
-        description: `${admin?.name || "Admin"} deleted ${config.title}: ${label}`,
-        status: "Success",
+    try {
+      const response = await fetch(`${configs[type].api}/${item.id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
       });
-    }
 
-    await loadEntity(type);
-    await loadEntity("auditLog");
-    await loadDashboard();
-  } catch (err) {
-    alert(err.message || "Delete failed");
-  }
-};
+      const result = await response.json();
+
+      if (isAuthOrPermissionError(response)) {
+        throw new Error(
+          result.message || "Access denied or session check failed. Please try again."
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || "Delete failed");
+      }
+
+      if (type !== "auditLog") {
+        await createAuditLog({
+          action: "Deleted",
+          module: config.pageTitle || config.title,
+          targetName: label,
+          description: `${admin?.name || "Admin"} deleted ${config.title}: ${label}`,
+          status: "Success",
+        });
+      }
+
+      await loadEntity(type);
+      await loadEntity("auditLog");
+      await loadDashboard();
+    } catch (err) {
+      alert(err.message || "Delete failed");
+    }
+  };
 
   const clearAuditLogs = async () => {
     if (!window.confirm("Clear all audit logs?")) return;
