@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import AdminAIChatBox from "./components/AdminAIChatBox";
 
 const rawApiBaseUrl =
   import.meta.env.VITE_API_URL ||
@@ -2984,6 +2985,12 @@ export default function App() {
 
         <section className="content">{renderPage()}</section>
       </main>
+
+      <AdminAIChatBox
+        admin={admin}
+        role={adminRole}
+        activePage={activePage}
+      />
 
       {modal.open && (
         <EntityModal

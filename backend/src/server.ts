@@ -191,6 +191,11 @@ mountRoute(
   "PROFILE ROUTES"
 );
 
+const adminAiModule = require("./routes/adminAiRoutes");
+const adminAiRoutes = adminAiModule.default || adminAiModule;
+
+app.use("/api/admin-ai", adminAiRoutes);
+
 /* ===============================
    404 HANDLER
 ================================ */

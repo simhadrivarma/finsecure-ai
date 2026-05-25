@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import AIChatBox from "./components/AIChatBox";
 import {
   LayoutDashboard,
   Landmark,
@@ -34,7 +35,6 @@ import {
   IdCard,
   Fingerprint,
 } from "lucide-react";
-import AIChatBox from "./components/AIChatBox";
 
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL ||
