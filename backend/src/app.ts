@@ -1205,11 +1205,256 @@ mountRoute(
 
 app.post("/api/admin-ai/chat", async (req: any, res: any) => {
   try {
+    const mongoose = require("mongoose");
+
+    const question = String(req.body?.message || "").toLowerCase().trim();
+
+    if (!question) {
+      return res.status(400).json({
+        success: false,
+        message: "Question is required.",
+      });
+    }
+
+    const db = mongoose.connection?.db;
+
+    if (!db) {
+      return res.status(500).json({
+        success: false,
+        message: "Database is not connected.",
+      });
+    }
+
+    const getCollection = async (names: string[]) => {
+      const collections = await db.listCollections().toArray();
+      const existingNames = collections.map((item: any) => item.name);
+      const collectionName = names.find((name) => existingNames.includes(name));
+
+      if (!collectionName) return [];
+
+      return await db.collection(collectionName).find({}).limit(2000).toArray();
+    };
+
+    const cleanRecord = (record: any) => {
+      const hiddenFields = [
+        "password",
+        "pass",
+        "hashedPassword",
+        "passwordHash",
+        "token",
+        "accessToken",
+        "refreshToken",
+        "__v",
+      ];
+
+      const safe: any = {};
+
+      Object.entries(record || {}).forEach(([key, value]) => {
+        if (hiddenFields.includes(key)) return;
+
+        if (key === "_id") {
+          safe._id = String(value);
+          safe.id = String(value);
+          return;
+        }
+
+        safe[key] = value;
+      });
+
+      return safe;
+    };
+
+    const formatMoney = (value: any) => {
+      const numberValue = Number(String(value || 0).replace(/₹|,/g, ""));
+      return `₹${Number.isNaN(numberValue) ? 0 : numberValue.toLocaleString("en-IN")}`;
+    };
+
+    const formatRecord = (title: string, record: any) => {
+      const safe = cleanRecord(record);
+
+      const lines = Object.entries(safe).map(([key, value]) => {
+        const label = key
+          .replace(/([A-Z])/g, " $1")
+          .replace(/^./, (char) => char.toUpperCase());
+
+        return `• ${label}: ${value || "-"}`;
+      });
+
+      return `${title}\n${lines.join("\n")}`;
+    };
+
+    const customers = await getCollection(["customers", "customer"]);
+    const employees = await getCollection(["employees", "employee"]);
+    const admins = await getCollection(["admins", "admin"]);
+    const branches = await getCollection(["branches", "branch"]);
+    const loans = await getCollection(["loans", "loan"]);
+    const transactions = await getCollection(["transactions", "transaction"]);
+    const auditLogs = await getCollection(["auditlogs", "auditLogs", "audit_logs"]);
+
+    const totalCustomerBalance = customers.reduce((sum: number, item: any) => {
+      return sum + Number(String(item.balance || 0).replace(/₹|,/g, ""));
+    }, 0);
+
+    const totalLoanAmount = loans.reduce((sum: number, item: any) => {
+      return (
+        sum +
+        Number(
+          String(item.loanAmount || item.amount || item.totalLoans || 0).replace(/₹|,/g, "")
+        )
+      );
+    }, 0);
+
+    let answer = "";
+
+    if (
+      question.includes("customer") &&
+      (question.includes("count") ||
+        question.includes("total") ||
+        question.includes("how many") ||
+        question.includes("number"))
+    ) {
+      answer = `Total customers: ${customers.length}`;
+    } else if (
+      question.includes("employee") &&
+      (question.includes("count") ||
+        question.includes("total") ||
+        question.includes("how many") ||
+        question.includes("number"))
+    ) {
+      answer = `Total employees: ${employees.length}`;
+    } else if (
+      question.includes("admin") &&
+      (question.includes("count") ||
+        question.includes("total") ||
+        question.includes("how many") ||
+        question.includes("number"))
+    ) {
+      answer = `Total admins: ${admins.length}`;
+    } else if (
+      question.includes("branch") &&
+      (question.includes("count") ||
+        question.includes("total") ||
+        question.includes("how many") ||
+        question.includes("number"))
+    ) {
+      answer = `Total branches: ${branches.length}`;
+    } else if (
+      question.includes("loan") &&
+      (question.includes("count") ||
+        question.includes("total") ||
+        question.includes("how many") ||
+        question.includes("number"))
+    ) {
+      answer = `Total loans: ${loans.length}`;
+    } else if (
+      question.includes("transaction") &&
+      (question.includes("count") ||
+        question.includes("total") ||
+        question.includes("how many") ||
+        question.includes("number"))
+    ) {
+      answer = `Total transactions: ${transactions.length}`;
+    } else if (question.includes("balance")) {
+      answer = `Total customer balance: ${formatMoney(totalCustomerBalance)}`;
+    } else if (
+      question.includes("summary") ||
+      question.includes("overview") ||
+      question.includes("bank details") ||
+      question.includes("everything")
+    ) {
+      answer = [
+        "FinSecure Bank Summary",
+        `• Total Customers: ${customers.length}`,
+        `• Total Employees: ${employees.length}`,
+        `• Total Admins: ${admins.length}`,
+        `• Total Branches: ${branches.length}`,
+        `• Total Loans: ${loans.length}`,
+        `• Total Transactions: ${transactions.length}`,
+        `• Total Audit Logs: ${auditLogs.length}`,
+        `• Total Customer Balance: ${formatMoney(totalCustomerBalance)}`,
+        `• Total Loan Amount: ${formatMoney(totalLoanAmount)}`,
+      ].join("\n");
+    } else {
+      const findCustomer = customers.find((customer: any) => {
+        const searchText = [
+          customer.name,
+          customer.customerName,
+          customer.email,
+          customer.phone,
+          customer.phoneNumber,
+          customer.accountNumber,
+          customer.cif,
+          customer.cifNumber,
+          customer.customerId,
+          customer.id,
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return searchText && question.split(" ").some((word) => word.length > 2 && searchText.includes(word));
+      });
+
+      const findEmployee = employees.find((employee: any) => {
+        const searchText = [
+          employee.name,
+          employee.employeeName,
+          employee.email,
+          employee.phone,
+          employee.phoneNumber,
+          employee.employeeId,
+          employee.id,
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return searchText && question.split(" ").some((word) => word.length > 2 && searchText.includes(word));
+      });
+
+      const findBranch = branches.find((branch: any) => {
+        const searchText = [
+          branch.name,
+          branch.branchName,
+          branch.ifsc,
+          branch.ifscCode,
+          branch.branchId,
+          branch.id,
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return searchText && question.split(" ").some((word) => word.length > 2 && searchText.includes(word));
+      });
+
+      if (findCustomer) {
+        answer = formatRecord("Customer Details", findCustomer);
+      } else if (findEmployee) {
+        answer = formatRecord("Employee Details", findEmployee);
+      } else if (findBranch) {
+        answer = formatRecord("Branch Details", findBranch);
+      } else {
+        answer = [
+          "I can answer questions like:",
+          "• Total customers",
+          "• Employees count",
+          "• Total branches",
+          "• Total loans",
+          "• Total transactions",
+          "• Total balance",
+          "• Complete bank summary",
+          "• Show customer Teja details",
+          "• Show employee Sri details",
+          "• Show branch Gajuwaka details",
+        ].join("\n");
+      }
+    }
+
     return res.status(200).json({
       success: true,
-      answer: "Admin AI backend route is connected successfully.",
+      answer,
     });
   } catch (error: any) {
+    console.error("Admin AI direct route error:", error);
+
     return res.status(500).json({
       success: false,
       message: error.message || "Admin AI failed.",
