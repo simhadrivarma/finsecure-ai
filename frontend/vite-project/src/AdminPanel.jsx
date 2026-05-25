@@ -1,8 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
-import CustomerDashboard from "./Dashboard";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const rawApiBaseUrl =
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://finsecure-ai-backend.vercel.app";
+
+const API_BASE_URL = String(rawApiBaseUrl).includes("onrender.com")
+  ? "https://finsecure-ai-backend.vercel.app"
+  : String(rawApiBaseUrl || "https://finsecure-ai-backend.vercel.app").replace(/\/$/, "");
 
 const API = {
   admin: `${API_BASE_URL}/api/admins`,
@@ -21,14 +26,126 @@ const API = {
 
 const todayDate = new Date().toISOString().slice(0, 10);
 
+const readJsonFromLocalStorage = (key) => {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+};
+
+const getStoredToken = () => {
+  return (
+    localStorage.getItem("finsecure_token") ||
+    localStorage.getItem("adminToken") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("token") ||
+    ""
+  );
+};
+
+const getStoredAdmin = () => {
+  const keys = [
+    "finsecure_admin",
+    "admin",
+    "adminData",
+    "loggedInAdmin",
+    "currentUser",
+    "user",
+  ];
+
+  for (const key of keys) {
+    const value = readJsonFromLocalStorage(key);
+    if (value && typeof value === "object") {
+      return value;
+    }
+  }
+
+  return null;
+};
+
+const normalizeAdminRole = (role) => {
+  const value = String(role || "").trim();
+  const lower = value.toLowerCase();
+
+  if (!value || lower === "admin" || lower === "superadmin") {
+    return "Super Admin";
+  }
+
+  return value;
+};
+
+const buildAdminSession = (adminData) => {
+  const rawRole =
+    adminData?.role ||
+    localStorage.getItem("role") ||
+    localStorage.getItem("userRole") ||
+    "Super Admin";
+
+  return {
+    ...adminData,
+    role: normalizeAdminRole(rawRole),
+    name: adminData?.name || "FinSecure Super Admin",
+    email: adminData?.email || "admin@finsecure.ai",
+  };
+};
+
+const saveAdminSession = (adminData, token) => {
+  const safeAdmin = buildAdminSession(adminData || {});
+  const safeToken = token || getStoredToken();
+
+  localStorage.setItem("finsecure_admin", JSON.stringify(safeAdmin));
+  localStorage.setItem("admin", JSON.stringify(safeAdmin));
+  localStorage.setItem("adminData", JSON.stringify(safeAdmin));
+  localStorage.setItem("loggedInAdmin", JSON.stringify(safeAdmin));
+  localStorage.setItem("currentUser", JSON.stringify(safeAdmin));
+  localStorage.setItem("user", JSON.stringify(safeAdmin));
+
+  localStorage.setItem("finsecure_token", safeToken);
+  localStorage.setItem("adminToken", safeToken);
+  localStorage.setItem("authToken", safeToken);
+  localStorage.setItem("accessToken", safeToken);
+  localStorage.setItem("token", safeToken);
+
+  localStorage.setItem("role", safeAdmin.role);
+  localStorage.setItem("userRole", safeAdmin.role);
+  localStorage.setItem("adminLoggedIn", "true");
+  localStorage.setItem("isAuthenticated", "true");
+  localStorage.setItem("isLoggedIn", "true");
+
+  return safeAdmin;
+};
+
+const clearAdminSession = () => {
+  [
+    "finsecure_admin",
+    "admin",
+    "adminData",
+    "loggedInAdmin",
+    "currentUser",
+    "user",
+    "finsecure_token",
+    "adminToken",
+    "authToken",
+    "accessToken",
+    "token",
+    "role",
+    "userRole",
+    "adminLoggedIn",
+    "isAuthenticated",
+    "isLoggedIn",
+  ].forEach((key) => localStorage.removeItem(key));
+};
+
+const isAuthOrPermissionError = (response) => {
+  return response.status === 401 || response.status === 403;
+};
+
+
 const getAuthHeaders = () => {
-  const token =
-  localStorage.getItem("finsecure_token") ||
-  localStorage.getItem("adminToken") ||
-  localStorage.getItem("authToken") ||
-  localStorage.getItem("accessToken") ||
-  localStorage.getItem("token") ||
-  "";
+  const token = getStoredToken();
 
   return {
     "Content-Type": "application/json",
@@ -169,10 +286,16 @@ const configs = {
           "Fraud Analyst",
         ],
       },
+      
       { name: "email", label: "Email", required: true },
       { name: "phone", label: "Phone Number", required: true },
       { name: "joiningDate", label: "Date of Joining" },
-      { name: "branch", label: "Branch Name", required: true },
+      {
+        name: "branch",
+        label: "Branch Name",
+        type: "branchSelect",
+        required: true,
+      },
       { name: "ifsc", label: "IFSC Code", required: true },
       {
         name: "customers",
@@ -264,7 +387,12 @@ const configs = {
       { name: "ifsc", label: "IFSC Code", required: true },
       { name: "cif", label: "CIF Number", required: true },
       { name: "balance", label: "Balance", defaultValue: "₹0" },
-      { name: "branch", label: "Branch", required: true },
+      {
+  name: "branch",
+  label: "Branch Name",
+  type: "branchSelect",
+  required: true,
+},
       { name: "employee", label: "Assigned Employee" },
       {
         name: "kyc",
@@ -470,9 +598,15 @@ function LoginPage({ onLogin }) {
         throw new Error(result.message || "Login failed");
       }
 
-      localStorage.setItem("finsecure_admin", JSON.stringify(result.data));
-      localStorage.setItem("finsecure_token", result.token);
-      onLogin(result.data, result.token);
+      const adminData = result.user || result.data;
+      const token = result.token;
+
+      if (!adminData || !token) {
+        throw new Error("Invalid admin login response from backend");
+      }
+
+      const savedAdmin = saveAdminSession(adminData, token);
+      onLogin(savedAdmin, token);
     } catch (err) {
       setError(err.message || "Login failed");
     } finally {
@@ -768,7 +902,7 @@ function Dashboard({ dashboardData, counts }) {
   );
 }
 
-function EntityModal({ config, mode, item, onClose, onSave }) {
+function EntityModal({ config, mode, item, onClose, onSave, branches = [] }) {
   const createEmpty = () => {
     const obj = {};
 
@@ -790,6 +924,28 @@ function EntityModal({ config, mode, item, onClose, onSave }) {
   const [form, setForm] = useState(item || createEmpty());
   const [formError, setFormError] = useState("");
   const viewOnly = mode === "view";
+  const branchOptions = Array.isArray(branches) ? branches : [];
+
+  const getBranchName = (branch) => {
+    return branch?.name || branch?.branchName || branch?.title || "";
+  };
+
+  const getBranchIfsc = (branch) => {
+    return branch?.ifsc || branch?.ifscCode || "";
+  };
+
+  const handleBranchSelect = (branchName) => {
+    const selectedBranch = branchOptions.find(
+      (branch) => getBranchName(branch) === branchName
+    );
+
+    setForm({
+      ...form,
+      branch: branchName,
+      ifsc: getBranchIfsc(selectedBranch) || form.ifsc || "",
+    });
+  };
+
 
   const getInputType = (field) => {
     if (field.type) return field.type;
@@ -1116,7 +1272,32 @@ function EntityModal({ config, mode, item, onClose, onSave }) {
                   ? " *"
                   : ""}
 
-                {field.type === "select" ? (
+                {field.type === "branchSelect" ? (
+                  <select
+                    value={form[field.name] || ""}
+                    onChange={(e) => handleBranchSelect(e.target.value)}
+                    disabled={viewOnly}
+                  >
+                    <option value="">Select Branch</option>
+
+                    {branchOptions.map((branch) => {
+                      const branchName = getBranchName(branch);
+                      const branchIfsc = getBranchIfsc(branch);
+
+                      if (!branchName) return null;
+
+                      return (
+                        <option
+                          key={branch._id || branch.id || branchName}
+                          value={branchName}
+                        >
+                          {branchName}
+                          {branchIfsc ? ` - ${branchIfsc}` : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                ) : field.type === "select" ? (
                   <select
                     value={form[field.name] || ""}
                     onChange={(e) =>
@@ -2170,18 +2351,8 @@ function AccessDenied({ role }) {
 }
 
 export default function App() {
-  const [admin, setAdmin] = useState(() => {
-    try {
-      const saved = localStorage.getItem("finsecure_admin");
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const [token, setToken] = useState(
-    () => localStorage.getItem("finsecure_token") || ""
-  );
+  const [admin, setAdmin] = useState(() => getStoredAdmin());
+  const [token, setToken] = useState(() => getStoredToken());
 
   const [activePage, setActivePage] = useState("dashboard");
   const [search, setSearch] = useState("");
@@ -2212,7 +2383,7 @@ export default function App() {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
-  const adminRole = admin?.role || "Super Admin";
+  const adminRole = normalizeAdminRole(admin?.role);
 
   const allowedPages = useMemo(() => {
     return roleAccess[adminRole] || ["dashboard", "settings"];
@@ -2236,33 +2407,29 @@ export default function App() {
     [data]
   );
 
+  useEffect(() => {
+    const storedAdmin = getStoredAdmin();
+    const storedToken = getStoredToken();
+
+    if (storedAdmin && storedToken && (!admin || !token)) {
+      const safeAdmin = saveAdminSession(storedAdmin, storedToken);
+      setAdmin(safeAdmin);
+      setToken(storedToken);
+    }
+  }, [admin, token]);
+
   const logout = (manual = false) => {
-  if (!manual) {
-    console.warn("Blocked automatic admin logout from API error");
-    return;
-  }
+    if (!manual) {
+      console.warn("Blocked automatic admin logout from API error");
+      return;
+    }
 
-  localStorage.removeItem("finsecure_admin");
-  localStorage.removeItem("admin");
-  localStorage.removeItem("adminData");
-  localStorage.removeItem("loggedInAdmin");
-  localStorage.removeItem("currentUser");
-  localStorage.removeItem("user");
-
-  localStorage.removeItem("finsecure_token");
-  localStorage.removeItem("adminToken");
-  localStorage.removeItem("authToken");
-  localStorage.removeItem("accessToken");
-  localStorage.removeItem("token");
-
-  localStorage.removeItem("role");
-  localStorage.removeItem("userRole");
-  localStorage.removeItem("adminLoggedIn");
-  localStorage.removeItem("isAuthenticated");
-  localStorage.removeItem("isLoggedIn");
-
-  window.location.href = "/";
-};
+    clearAdminSession();
+    setAdmin(null);
+    setToken("");
+    setActivePage("dashboard");
+    window.location.href = "/";
+  };
 
   const loadEntity = async (type) => {
     try {
@@ -2274,15 +2441,14 @@ export default function App() {
 
       const result = await response.json();
 
-      if (response.status === 401 || response.status === 403) {
-  console.warn(
-    `${type} access issue:`,
-    result.message || "Access denied, keeping admin logged in"
-  );
-
-  setData((prev) => ({ ...prev, [type]: [] }));
-  return;
-}
+      if (isAuthOrPermissionError(response)) {
+        console.warn(
+          `${type} access issue:`,
+          result.message || "Access denied, keeping admin logged in"
+        );
+        setData((prev) => ({ ...prev, [type]: [] }));
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(result.message || `Failed to load ${type}`);
@@ -2304,16 +2470,24 @@ export default function App() {
 
       const result = await response.json();
 
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
+      if (isAuthOrPermissionError(response)) {
+        console.warn(
+          "Dashboard access issue:",
+          result.message || "Access denied, keeping admin logged in"
+        );
+        setDashboardData({});
+        return;
       }
 
       if (response.ok) {
         setDashboardData(result.data || {});
+      } else {
+        console.warn(result.message || "Dashboard load failed");
+        setDashboardData({});
       }
     } catch (err) {
       console.error("Dashboard load error:", err);
+      setDashboardData({});
     }
   };
 
@@ -2354,9 +2528,10 @@ export default function App() {
 
       const result = await response.json();
 
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
+      if (isAuthOrPermissionError(response)) {
+        throw new Error(
+          result.message || "Access denied or session check failed. Please try again."
+        );
       }
 
       if (!response.ok) {
@@ -2390,9 +2565,10 @@ export default function App() {
 
       const result = await response.json();
 
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
+      if (isAuthOrPermissionError(response)) {
+        throw new Error(
+          result.message || "Access denied or session check failed. Please try again."
+        );
       }
 
       if (!response.ok) {
@@ -2417,9 +2593,10 @@ export default function App() {
 
       const result = await response.json();
 
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
+      if (isAuthOrPermissionError(response)) {
+        throw new Error(
+          result.message || "Access denied or session check failed. Please try again."
+        );
       }
 
       if (!response.ok) {
@@ -2445,20 +2622,20 @@ export default function App() {
 
       const result = await response.json();
 
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
+      if (isAuthOrPermissionError(response)) {
+        throw new Error(
+          result.message || "Access denied or session check failed. Please try again."
+        );
       }
 
       if (!response.ok) {
         throw new Error(result.message || "Profile update failed");
       }
 
-      localStorage.setItem("finsecure_admin", JSON.stringify(result.data));
-      localStorage.setItem("finsecure_token", result.token);
+      const updatedAdmin = saveAdminSession(result.data || profileData, result.token || token);
 
-      setAdmin(result.data);
-      setToken(result.token);
+      setAdmin(updatedAdmin);
+      setToken(result.token || token);
       setProfileModalOpen(false);
 
       alert("Profile updated successfully");
@@ -2477,9 +2654,10 @@ export default function App() {
 
       const result = await response.json();
 
-      if (response.status === 401) {
-        logout();
-        throw new Error(result.message || "Session expired. Please login again.");
+      if (isAuthOrPermissionError(response)) {
+        throw new Error(
+          result.message || "Access denied or session check failed. Please try again."
+        );
       }
 
       if (!response.ok) {
@@ -2488,7 +2666,7 @@ export default function App() {
 
       setPasswordModalOpen(false);
       alert("Password changed successfully. Please login again.");
-      logout();
+      logout(true);
     } catch (err) {
       alert(err.message || "Password change failed");
     }
@@ -2553,7 +2731,7 @@ export default function App() {
           setDark={setDark}
           fontSize={fontSize}
           setFontSize={setFontSize}
-          onLogout={logout}
+          onLogout={() => logout(true)}
           onOpenProfile={() => setProfileModalOpen(true)}
           onOpenPassword={() => setPasswordModalOpen(true)}
         />
@@ -2653,7 +2831,7 @@ export default function App() {
 
             <div className="avatar">{(admin.name || "A").charAt(0)}</div>
 
-            <button className="top-logout" onClick={logout}>
+            <button className="top-logout" onClick={() => logout(true)}>
               Logout
             </button>
           </div>
@@ -2667,6 +2845,7 @@ export default function App() {
           config={configs[modal.type]}
           mode={modal.mode}
           item={modal.item}
+          branches={data.branch || []}
           onClose={() =>
             setModal({
               open: false,
