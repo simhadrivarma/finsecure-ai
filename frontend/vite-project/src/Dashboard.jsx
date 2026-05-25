@@ -2107,7 +2107,33 @@ localStorage.setItem("userPan", data.user.panNumber || "");
         {showAccountDetails && (
           <div style={styles.modalOverlay}>
             <div style={styles.modalBox}>
-              <h2 style={styles.cardTitle}>Account Details</h2>
+              <h2 style={styles.cardTitle}><div className="account-details-modal">
+  <h2>Account Details</h2>
+
+  <p><strong>Name:</strong> {customer.name || customer.customerName || "N/A"}</p>
+  <p><strong>Customer ID:</strong> {customer.id || customer._id || "N/A"}</p>
+  <p><strong>Email:</strong> {customer.email || "N/A"}</p>
+  <p><strong>Phone:</strong> {customer.phone || customer.phoneNumber || "N/A"}</p>
+
+  <p><strong>Branch:</strong> {customer.branch || "N/A"}</p>
+  <p><strong>Account Type:</strong> {customer.accountType || "Savings Account"}</p>
+  <p><strong>Account Number:</strong> {customer.accountNumber || "N/A"}</p>
+  <p><strong>IFSC Code:</strong> {customer.ifsc || customer.ifscCode || "N/A"}</p>
+  <p><strong>CIF Number:</strong> {customer.cif || customer.cifNumber || "N/A"}</p>
+
+  <p><strong>Total Income:</strong> ₹{Number(customer.totalIncome || 0).toLocaleString("en-IN")}</p>
+  <p><strong>Total Expense:</strong> ₹{Number(customer.totalExpense || 0).toLocaleString("en-IN")}</p>
+  <p><strong>Balance:</strong> ₹{Number(customer.balance || 0).toLocaleString("en-IN")}</p>
+  <p><strong>Investments:</strong> ₹{Number(customer.investments || 0).toLocaleString("en-IN")}</p>
+
+  <p><strong>KYC:</strong> {customer.kyc || "Pending"}</p>
+  <p><strong>Status:</strong> {customer.status || "Active"}</p>
+
+  <p><strong>PAN Number:</strong> {customer.panNumber || "N/A"}</p>
+  <p><strong>Aadhaar Number:</strong> {customer.aadhaarNumber || "N/A"}</p>
+
+  <button onClick={() => setShowAccountDetails(false)}>Close</button>
+</div></h2>
 
               <p>
                 <strong>Name:</strong> {userName}
