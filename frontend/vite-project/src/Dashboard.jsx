@@ -36,7 +36,15 @@ import {
 } from "lucide-react";
 import AIChatBox from "./components/AIChatBox";
 
-const API = "http://127.0.0.1:5000/api";
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://finsecure-ai-backend.vercel.app"
+).replace(/\/$/, "");
+
+const API = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL
+  : `${API_BASE_URL}/api`;
 
 const defaultBranches = [
   {
@@ -97,6 +105,82 @@ const formatDate = (date) => {
   });
 };
 
+const getStoredUser = () => {
+  try {
+    const saved =
+      localStorage.getItem("finsecure_user") || localStorage.getItem("user");
+
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch {
+    // Ignore invalid saved JSON
+  }
+
+  return {
+    name: localStorage.getItem("userName") || "Customer",
+    email: localStorage.getItem("userEmail") || "customer@gmail.com",
+    phone: localStorage.getItem("userPhone") || "",
+    aadhaarNumber: localStorage.getItem("userAadhaar") || "",
+    panNumber: localStorage.getItem("userPan") || "",
+    role: localStorage.getItem("role") || "customer",
+  };
+};
+
+const saveCustomerSession = (user = {}, tokenValue = "") => {
+  const safeUser = {
+    ...getStoredUser(),
+    ...user,
+    role: user.role || "customer",
+  };
+
+  if (tokenValue) {
+    localStorage.setItem("token", tokenValue);
+    localStorage.setItem("finsecure_token", tokenValue);
+  }
+
+  localStorage.setItem("role", safeUser.role || "customer");
+  localStorage.setItem("userName", safeUser.name || safeUser.customerName || "");
+  localStorage.setItem("userEmail", safeUser.email || "");
+  localStorage.setItem("userPhone", safeUser.phone || safeUser.phoneNumber || "");
+  localStorage.setItem("userAadhaar", safeUser.aadhaarNumber || "");
+  localStorage.setItem("userPan", safeUser.panNumber || "");
+  localStorage.setItem("user", JSON.stringify(safeUser));
+  localStorage.setItem("finsecure_user", JSON.stringify(safeUser));
+
+  return safeUser;
+};
+
+const cleanText = (value) => String(value || "").trim().toLowerCase();
+
+const cleanNumber = (value) => {
+  const numberValue = Number(
+    String(value || "0")
+      .replace(/₹/g, "")
+      .replace(/,/g, "")
+      .trim()
+  );
+
+  return Number.isNaN(numberValue) ? 0 : numberValue;
+};
+
+const maskAccountNumber = (value) => {
+  const raw = String(value || "").replace(/\s/g, "");
+
+  if (!raw) return "N/A";
+  if (raw.length <= 4) return raw;
+
+  return `XXXX XXXX XXXX ${raw.slice(-4)}`;
+};
+
+const normalizeArrayResponse = (result) => {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.data)) return result.data;
+  if (Array.isArray(result?.rows)) return result.rows;
+  return [];
+};
+
+
 function Dashboard() {
   const [isLogin, setIsLogin] = useState(true);
   const [token, setToken] = useState(() => {
@@ -126,6 +210,9 @@ function Dashboard() {
 
   const [transactions, setTransactions] = useState([]);
   const [branches, setBranches] = useState(defaultBranches);
+  const [branchCustomers, setBranchCustomers] = useState([]);
+  const [branchEmployees, setBranchEmployees] = useState([]);
+  const [customerProfile, setCustomerProfile] = useState(() => getStoredUser());
   const [selectedPage, setSelectedPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [toast, setToast] = useState("");
@@ -136,8 +223,27 @@ function Dashboard() {
   const [showAccountDetails, setShowAccountDetails] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
 
-  const userName = localStorage.getItem("userName") || "Customer";
-  const userEmail = localStorage.getItem("userEmail") || "customer@gmail.com";
+  const customer = useMemo(() => {
+    return {
+      ...getStoredUser(),
+      ...customerProfile,
+    };
+  }, [customerProfile, token]);
+
+  const userName = customer.name || customer.customerName || "Customer";
+  const userEmail = customer.email || "customer@gmail.com";
+  const customerId = customer.id || customer._id || "N/A";
+  const customerPhone = customer.phone || customer.phoneNumber || "N/A";
+  const customerBranch = customer.branch || "N/A";
+  const customerAccountType =
+    customer.accountType || customer.type || "FinSecure Royal Account";
+  const customerAccountNumber = customer.accountNumber || "";
+  const customerIFSC = customer.ifsc || customer.ifscCode || "N/A";
+  const customerCIF = customer.cif || customer.cifNumber || "N/A";
+  const customerKYC = customer.kyc || "Pending";
+  const customerStatus = customer.status || "Active";
+  const customerPan = customer.panNumber || "N/A";
+  const customerAadhaar = customer.aadhaarNumber || "N/A";
 
   const [authForm, setAuthForm] = useState({
     name: "",
@@ -147,6 +253,7 @@ function Dashboard() {
     phone: "",
     aadhaarNumber: "",
     panNumber: "",
+    branch: "",
   });
 
   const [profileForm, setProfileForm] = useState({
@@ -283,6 +390,7 @@ function Dashboard() {
           phone: authForm.phone,
           aadhaarNumber: authForm.aadhaarNumber,
           panNumber: authForm.panNumber.toUpperCase(),
+          branch: authForm.branch || "Main Branch",
         };
 
     try {
@@ -302,22 +410,28 @@ function Dashboard() {
       }
 
       if (isLogin) {
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("role", data.user.role);
-        localStorage.setItem("userName", data.user.name || "");
-        localStorage.setItem("userEmail", data.user.email || "");
-        localStorage.setItem("userPhone", data.user.phone || "");
-        localStorage.setItem("userAadhaar", data.user.aadhaarNumber || "");
-        localStorage.setItem("userPan", data.user.panNumber || "");
+        const loggedUser = data.user || data.data || {};
+        const savedUser = saveCustomerSession(loggedUser, data.token);
 
+        setCustomerProfile(savedUser);
         setToken(data.token);
 
-        if (data.user.role === "admin") {
+        if (String(savedUser.role || "").toLowerCase().includes("admin")) {
           window.location.href = "/admin";
         } else {
-          window.location.href = "/";
+          window.location.href = "/dashboard";
         }
       } else {
+        const registeredUser = data.user || data.data || null;
+
+        if (data.token && registeredUser) {
+          const savedUser = saveCustomerSession(registeredUser, data.token);
+          setCustomerProfile(savedUser);
+          setToken(data.token);
+          window.location.href = "/dashboard";
+          return;
+        }
+
         setMessage("Registered successfully. Please login.");
         setIsLogin(true);
       }
@@ -326,38 +440,123 @@ function Dashboard() {
     }
   };
 
-  const loadBranches = () => {
-    const savedBranches = localStorage.getItem("branches");
+  const getAuthHeaders = () => {
+    const currentToken =
+      localStorage.getItem("finsecure_token") || localStorage.getItem("token") || "";
 
-    if (savedBranches) {
-      try {
-        setBranches(JSON.parse(savedBranches));
-      } catch {
+    return {
+      "Content-Type": "application/json",
+      Authorization: currentToken ? `Bearer ${currentToken}` : "",
+    };
+  };
+
+  const loadBranches = async () => {
+    try {
+      const headers = getAuthHeaders();
+
+      const [branchResponse, customerResponse, employeeResponse] =
+        await Promise.all([
+          fetch(`${API}/branches`, { headers }),
+          fetch(`${API}/customers`, { headers }),
+          fetch(`${API}/employees`, { headers }),
+        ]);
+
+      const branchResult = await branchResponse.json();
+      const customerResult = await customerResponse.json();
+      const employeeResult = await employeeResponse.json();
+
+      const liveBranches = normalizeArrayResponse(branchResult);
+      const liveCustomers = normalizeArrayResponse(customerResult);
+      const liveEmployees = normalizeArrayResponse(employeeResult);
+
+      setBranchCustomers(liveCustomers);
+      setBranchEmployees(liveEmployees);
+
+      if (!liveBranches.length) {
         setBranches(defaultBranches);
+        return;
       }
+
+      const normalizedBranches = liveBranches.map((branch, index) => {
+        const branchName =
+          branch.name || branch.branchName || `Branch ${index + 1}`;
+        const branchCode =
+          branch.ifsc || branch.ifscCode || branch.code || branch.id || `BR${index + 1}`;
+        const branchAddress =
+          branch.address || branch.location || "Address not available";
+
+        const normalizedName = cleanText(branchName);
+        const normalizedCode = cleanText(branchCode);
+
+        const employeesCount = liveEmployees.filter((employee) => {
+          return (
+            cleanText(employee.branch) === normalizedName ||
+            cleanText(employee.ifsc || employee.ifscCode) === normalizedCode
+          );
+        }).length;
+
+        const customersCount = liveCustomers.filter((customerItem) => {
+          return (
+            cleanText(customerItem.branch) === normalizedName ||
+            cleanText(customerItem.ifsc || customerItem.ifscCode) === normalizedCode
+          );
+        }).length;
+
+        return {
+          ...branch,
+          id: branch.id || branch._id || branchCode || `BR${index + 1}`,
+          code: branchCode,
+          name: branchName,
+          location: branchAddress,
+          employees: employeesCount || cleanNumber(branch.employees),
+          accounts: customersCount || cleanNumber(branch.customers || branch.accounts),
+        };
+      });
+
+      setBranches(normalizedBranches);
+    } catch (error) {
+      console.error("Failed to load live branches:", error);
+
+      const savedBranches = localStorage.getItem("branches");
+
+      if (savedBranches) {
+        try {
+          setBranches(JSON.parse(savedBranches));
+          return;
+        } catch {
+          // Continue to default branches
+        }
+      }
+
+      setBranches(defaultBranches);
     }
   };
 
   const loadDashboard = async () => {
     try {
       const res = await fetch(`${API}/dashboard`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
+        headers: getAuthHeaders(),
       });
 
-      const data = await res.json();
+      const result = await res.json();
+      const data = result?.data || result || {};
 
       setDashboard({
-        totalIncome: Number(data?.totalIncome || 0),
-        totalExpense: Number(data?.totalExpense || 0),
-        balance: Number(data?.balance || 0),
+        totalIncome: cleanNumber(
+          data?.totalIncome ?? customerProfile?.totalIncome ?? customer?.totalIncome
+        ),
+        totalExpense: cleanNumber(
+          data?.totalExpense ?? customerProfile?.totalExpense ?? customer?.totalExpense
+        ),
+        balance: cleanNumber(
+          data?.balance ?? customerProfile?.balance ?? customer?.balance
+        ),
       });
     } catch {
       setDashboard({
-        totalIncome: 0,
-        totalExpense: 0,
-        balance: 0,
+        totalIncome: cleanNumber(customerProfile?.totalIncome || customer?.totalIncome),
+        totalExpense: cleanNumber(customerProfile?.totalExpense || customer?.totalExpense),
+        balance: cleanNumber(customerProfile?.balance || customer?.balance),
       });
     }
   };
@@ -365,13 +564,13 @@ function Dashboard() {
   const loadTransactions = async () => {
     try {
       const res = await fetch(`${API}/transactions`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
+        headers: getAuthHeaders(),
       });
 
-      const data = await res.json();
-      setTransactions(Array.isArray(data) ? data : []);
+      const result = await res.json();
+      const data = normalizeArrayResponse(result);
+
+      setTransactions(data);
     } catch {
       setTransactions([]);
     }
@@ -379,30 +578,48 @@ function Dashboard() {
 
   const loadProfile = async () => {
     try {
-      const res = await fetch(`${API}/profile/me`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      const headers = getAuthHeaders();
+      const email = userEmail || localStorage.getItem("userEmail") || "";
+      const urls = [
+        `${API}/customer/profile?email=${encodeURIComponent(email)}`,
+        `${API}/profile/me`,
+      ];
 
-      const data = await res.json();
+      let loadedUser = null;
 
-      if (!res.ok || !data.user) return;
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { headers });
+          const result = await res.json();
+
+          if (!res.ok) continue;
+
+          loadedUser = result.user || result.data || result.customer || null;
+          if (loadedUser) break;
+        } catch {
+          // Try next profile URL
+        }
+      }
+
+      if (!loadedUser) return;
+
+      const savedUser = saveCustomerSession(loadedUser);
+      setCustomerProfile(savedUser);
 
       setProfileForm({
-  name: data.user.name || localStorage.getItem("userName") || "",
-  email: data.user.email || localStorage.getItem("userEmail") || "",
-  phone: data.user.phone || localStorage.getItem("userPhone") || "",
-  aadhaarNumber:
-    data.user.aadhaarNumber || localStorage.getItem("userAadhaar") || "",
-  panNumber: data.user.panNumber || localStorage.getItem("userPan") || "",
-});
+        name: savedUser.name || savedUser.customerName || "",
+        email: savedUser.email || "",
+        phone: savedUser.phone || savedUser.phoneNumber || "",
+        aadhaarNumber: savedUser.aadhaarNumber || "",
+        panNumber: savedUser.panNumber || "",
+      });
 
-      localStorage.setItem("userName", data.user.name || "");
-localStorage.setItem("userEmail", data.user.email || "");
-localStorage.setItem("userPhone", data.user.phone || "");
-localStorage.setItem("userAadhaar", data.user.aadhaarNumber || "");
-localStorage.setItem("userPan", data.user.panNumber || "");
+      setDashboard((prev) => ({
+        ...prev,
+        totalIncome: cleanNumber(savedUser.totalIncome ?? prev.totalIncome),
+        totalExpense: cleanNumber(savedUser.totalExpense ?? prev.totalExpense),
+        balance: cleanNumber(savedUser.balance ?? prev.balance),
+      }));
     } catch {
       console.log("Profile loading failed");
     }
@@ -787,13 +1004,21 @@ localStorage.setItem("userPan", data.user.panNumber || "");
   };
 
   useEffect(() => {
+    loadBranches();
+
+    const timer = setInterval(loadBranches, 15000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     if (token) {
       const role = localStorage.getItem("role");
 
       if (role === "admin" && window.location.pathname !== "/customer") {
-  window.location.href = "/admin";
-  return;
-}
+        window.location.href = "/admin";
+        return;
+      }
 
       loadBranches();
       loadDashboard();
@@ -941,6 +1166,27 @@ localStorage.setItem("userPan", data.user.panNumber || "");
                       required
                       maxLength="10"
                     />
+                  </AuthInput>
+
+                  <AuthInput icon={Landmark}>
+                    <select
+                      name="branch"
+                      value={authForm.branch}
+                      onChange={handleAuthChange}
+                      style={styles.authInput}
+                      required
+                    >
+                      <option value="">Select Branch</option>
+                      {branches.map((branch) => (
+                        <option
+                          key={branch.id || branch.code || branch.name}
+                          value={branch.name}
+                        >
+                          {branch.name}
+                          {branch.code ? ` - ${branch.code}` : ""}
+                        </option>
+                      ))}
+                    </select>
                   </AuthInput>
                 </>
               )}
@@ -1319,8 +1565,8 @@ localStorage.setItem("userPan", data.user.panNumber || "");
                   <div style={styles.accountInner}>
                     <div>
                       <p style={styles.labelGold}>Primary Account</p>
-                      <h3>FinSecure Royal Account</h3>
-                      <p>XXXX XXXX XXXX 5678</p>
+                      <h3>{customerAccountType}</h3>
+                      <p>{maskAccountNumber(customerAccountNumber)}</p>
 
                       <p style={styles.labelGold}>Available Balance</p>
 
@@ -1399,31 +1645,54 @@ localStorage.setItem("userPan", data.user.panNumber || "");
 
           {selectedPage === "branches" && (
             <div style={styles.card}>
-              <h2 style={styles.cardTitle}>Branches</h2>
+              <div style={styles.cardHeader}>
+                <div>
+                  <h2 style={styles.cardTitle}>Branches</h2>
+                  <p style={styles.desc}>
+                    Live branch records from the admin portal. New branches added
+                    by admin will appear here automatically.
+                  </p>
+                </div>
+
+                <button style={styles.goldMiniBtn} onClick={loadBranches}>
+                  Refresh Branches
+                </button>
+              </div>
 
               <div style={styles.branchGrid}>
-                {branches.map((branch) => (
-                  <div key={branch.id || branch.code} style={styles.branchCard}>
+                {branches.length === 0 ? (
+                  <div style={styles.branchCard}>
                     <div style={styles.branchTop}>
-                      <h3>{branch.name}</h3>
-                      <span>{branch.code}</span>
+                      <h3>No branches found</h3>
+                      <span>--</span>
                     </div>
 
-                    <p>{branch.location}</p>
-
-                    <div style={styles.branchStats}>
-                      <div>
-                        <small>Employees</small>
-                        <strong>{branch.employees}</strong>
-                      </div>
-
-                      <div>
-                        <small>Active Accounts</small>
-                        <strong>{branch.accounts}</strong>
-                      </div>
-                    </div>
+                    <p>Add branches from Admin Portal → Branches.</p>
                   </div>
-                ))}
+                ) : (
+                  branches.map((branch) => (
+                    <div key={branch.id || branch.code} style={styles.branchCard}>
+                      <div style={styles.branchTop}>
+                        <h3>{branch.name}</h3>
+                        <span>{branch.code}</span>
+                      </div>
+
+                      <p>{branch.location}</p>
+
+                      <div style={styles.branchStats}>
+                        <div>
+                          <small>Employees</small>
+                          <strong>{branch.employees}</strong>
+                        </div>
+
+                        <div>
+                          <small>Active Accounts</small>
+                          <strong>{branch.accounts}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -1461,9 +1730,14 @@ localStorage.setItem("userPan", data.user.panNumber || "");
               <div style={styles.subCard}>
                 <h2>Account Details</h2>
                 <p>Name: {userName}</p>
+                <p>Customer ID: {customerId}</p>
                 <p>Email: {userEmail}</p>
-                <p>Account Type: FinSecure Royal Account</p>
-                <p>Account Number: XXXX XXXX XXXX 5678</p>
+                <p>Phone: {customerPhone}</p>
+                <p>Branch: {customerBranch}</p>
+                <p>Account Type: {customerAccountType}</p>
+                <p>Account Number: {maskAccountNumber(customerAccountNumber)}</p>
+                <p>IFSC Code: {customerIFSC}</p>
+                <p>CIF Number: {customerCIF}</p>
 
                 <button
                   style={styles.goldBtn}
@@ -2107,45 +2381,47 @@ localStorage.setItem("userPan", data.user.panNumber || "");
         {showAccountDetails && (
           <div style={styles.modalOverlay}>
             <div style={styles.modalBox}>
-              <h2 style={styles.cardTitle}><div className="account-details-modal">
-  <h2>Account Details</h2>
-
-  <p><strong>Name:</strong> {customer.name || customer.customerName || "N/A"}</p>
-  <p><strong>Customer ID:</strong> {customer.id || customer._id || "N/A"}</p>
-  <p><strong>Email:</strong> {customer.email || "N/A"}</p>
-  <p><strong>Phone:</strong> {customer.phone || customer.phoneNumber || "N/A"}</p>
-
-  <p><strong>Branch:</strong> {customer.branch || "N/A"}</p>
-  <p><strong>Account Type:</strong> {customer.accountType || "Savings Account"}</p>
-  <p><strong>Account Number:</strong> {customer.accountNumber || "N/A"}</p>
-  <p><strong>IFSC Code:</strong> {customer.ifsc || customer.ifscCode || "N/A"}</p>
-  <p><strong>CIF Number:</strong> {customer.cif || customer.cifNumber || "N/A"}</p>
-
-  <p><strong>Total Income:</strong> ₹{Number(customer.totalIncome || 0).toLocaleString("en-IN")}</p>
-  <p><strong>Total Expense:</strong> ₹{Number(customer.totalExpense || 0).toLocaleString("en-IN")}</p>
-  <p><strong>Balance:</strong> ₹{Number(customer.balance || 0).toLocaleString("en-IN")}</p>
-  <p><strong>Investments:</strong> ₹{Number(customer.investments || 0).toLocaleString("en-IN")}</p>
-
-  <p><strong>KYC:</strong> {customer.kyc || "Pending"}</p>
-  <p><strong>Status:</strong> {customer.status || "Active"}</p>
-
-  <p><strong>PAN Number:</strong> {customer.panNumber || "N/A"}</p>
-  <p><strong>Aadhaar Number:</strong> {customer.aadhaarNumber || "N/A"}</p>
-
-  <button onClick={() => setShowAccountDetails(false)}>Close</button>
-</div></h2>
+              <h2 style={styles.cardTitle}>Account Details</h2>
 
               <p>
                 <strong>Name:</strong> {userName}
               </p>
               <p>
+                <strong>Customer ID:</strong> {customerId}
+              </p>
+              <p>
                 <strong>Email:</strong> {userEmail}
               </p>
               <p>
-                <strong>Account Type:</strong> FinSecure Royal Account
+                <strong>Phone:</strong> {customerPhone}
               </p>
               <p>
-                <strong>Account Number:</strong> XXXX XXXX XXXX 5678
+                <strong>Branch:</strong> {customerBranch}
+              </p>
+              <p>
+                <strong>Account Type:</strong> {customerAccountType}
+              </p>
+              <p>
+                <strong>Account Number:</strong>{" "}
+                {maskAccountNumber(customerAccountNumber)}
+              </p>
+              <p>
+                <strong>IFSC Code:</strong> {customerIFSC}
+              </p>
+              <p>
+                <strong>CIF Number:</strong> {customerCIF}
+              </p>
+              <p>
+                <strong>KYC Status:</strong> {customerKYC}
+              </p>
+              <p>
+                <strong>Account Status:</strong> {customerStatus}
+              </p>
+              <p>
+                <strong>PAN Number:</strong> {customerPan}
+              </p>
+              <p>
+                <strong>Aadhaar Number:</strong> {customerAadhaar}
               </p>
               <p>
                 <strong>Total Income:</strong>{" "}
