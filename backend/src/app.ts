@@ -1216,14 +1216,48 @@ app.post("/api/admin-ai/chat", async (req: any, res: any) => {
       });
     }
 
-    const db = mongoose.connection?.db;
+    if (mongoose.connection.readyState !== 1) {
+  const mongoUri =
+    process.env.MONGO_URI ||
+    process.env.MONGODB_URI ||
+    process.env.DATABASE_URL ||
+    MONGO_URI;
 
-    if (!db) {
-      return res.status(500).json({
-        success: false,
-        message: "Database is not connected.",
-      });
-    }
+  if (!mongoUri) {
+    return res.status(500).json({
+      success: false,
+      message: "MongoDB URI is missing in backend environment variables.",
+    });
+  }
+
+  await mongoose.connect(mongoUri);
+}
+
+if (mongoose.connection.readyState !== 1) {
+  const mongoUri =
+    process.env.MONGO_URI ||
+    process.env.MONGODB_URI ||
+    process.env.DATABASE_URL ||
+    MONGO_URI;
+
+  if (!mongoUri) {
+    return res.status(500).json({
+      success: false,
+      message: "MongoDB URI is missing in backend environment variables.",
+    });
+  }
+
+  await mongoose.connect(mongoUri);
+}
+
+const db = mongoose.connection.db;
+
+if (!db) {
+  return res.status(500).json({
+    success: false,
+    message: "Database connected but DB object not ready.",
+  });
+}
 
     const getCollection = async (names: string[]) => {
       const collections = await db.listCollections().toArray();
