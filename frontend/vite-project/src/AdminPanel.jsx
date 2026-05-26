@@ -299,6 +299,12 @@ const configs = {
       },
       { name: "ifsc", label: "IFSC Code", required: true },
       {
+  name: "ifsc",
+  label: "IFSC Code",
+  required: true,
+  readOnly: true,
+},
+      {
         name: "customers",
         label: "Customers Managed",
         type: "number",
@@ -370,6 +376,12 @@ const configs = {
     fields: [
       { name: "name", label: "Customer Name", required: true },
       { name: "email", label: "Email" },
+      {
+  name: "password",
+  label: "Password",
+  type: "password",
+  required: true,
+},
       { name: "phone", label: "Phone Number" },
       { name: "accountNumber", label: "Account Number", required: true },
       {
@@ -389,6 +401,12 @@ const configs = {
       { name: "cif", label: "CIF Number", required: true },
       { name: "balance", label: "Balance", defaultValue: "₹0" },
       { name: "branch", label: "Branch", required: true },
+      {
+  name: "branch",
+  label: "Branch",
+  type: "branchSelect",
+  required: true,
+},
       { name: "employee", label: "Assigned Employee" },
       {
         name: "kyc",
@@ -566,7 +584,7 @@ const configs = {
         options: ["Ready", "Review", "Pending", "Archived"],
       },
     ],
-  },
+},
 };
 
 function LoginPage({ onLogin }) {
