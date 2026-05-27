@@ -6,6 +6,49 @@ import "./App.css";
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "https://finsecure-ai-backend.vercel.app";
 
+const normalizeRole = (role = "") => {
+  return String(role || "")
+    .toLowerCase()
+    .trim()
+    .replace(/_/g, " ")
+    .replace(/-/g, " ");
+};
+
+const isAdminRole = (role = "") => {
+  const normalizedRole = normalizeRole(role);
+
+  return [
+    "admin",
+    "super",
+    "super admin",
+    "superadmin",
+    "branch manager",
+    "manager",
+    "staff",
+    "cashier",
+    "loan officer",
+    "customer support executive",
+    "relationship manager",
+    "admin officer",
+    "fraud analyst",
+  ].includes(normalizedRole);
+};
+
+const isCustomerRole = (role = "") => {
+  return normalizeRole(role) === "customer";
+};
+
+const getUserFromResult = (result) => {
+  return (
+    result?.user ||
+    result?.data ||
+    result?.account ||
+    result?.customer ||
+    result?.admin ||
+    null
+  );
+};
+
 export default function App() {
   const [mode, setMode] = useState("login");
   const [page, setPage] = useState("auth");
@@ -34,77 +77,46 @@ export default function App() {
   const currentUser = useMemo(() => {
     try {
       const saved =
-        localStorage.getItem("finsecure_user") || localStorage.getItem("user");
+        localStorage.getItem("finsecure_user") ||
+        localStorage.getItem("finsecure_admin") ||
+        localStorage.getItem("finsecure_customer") ||
+        localStorage.getItem("user");
+
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
     }
   }, [page]);
 
-  useEffect(() => {
-    const savedUser =
-      localStorage.getItem("finsecure_user") || localStorage.getItem("user");
-    const savedToken =
-      localStorage.getItem("finsecure_token") || localStorage.getItem("token");
-
-    const path = window.location.pathname;
-
-    if (savedUser && savedToken) {
-      try {
-        const user = JSON.parse(savedUser);
-        const role = String(user.role || "").toLowerCase();
-
-        if (path.includes("/admin") || role.includes("admin") || role.includes("super")) {
-          setPage("admin");
-          return;
-        }
-
-        if (path.includes("/dashboard") || role.includes("customer")) {
-          setPage("customer");
-          return;
-        }
-      } catch {
-        clearSession();
-      }
-    }
-
-    if (path.includes("/admin")) {
-      setPage("auth");
-      setMode("login");
-      return;
-    }
-
-    setPage("auth");
-  }, []);
-
-  useEffect(() => {
-    loadBranches();
-  }, []);
-
   const clearSession = () => {
     localStorage.removeItem("finsecure_token");
     localStorage.removeItem("token");
+
     localStorage.removeItem("finsecure_user");
     localStorage.removeItem("user");
+    localStorage.removeItem("currentUser");
+
+    localStorage.removeItem("finsecure_admin");
+    localStorage.removeItem("admin");
+    localStorage.removeItem("adminData");
+    localStorage.removeItem("loggedInAdmin");
+    localStorage.removeItem("adminToken");
+
+    localStorage.removeItem("finsecure_customer");
+    localStorage.removeItem("customer");
+    localStorage.removeItem("customerData");
+
     localStorage.removeItem("role");
-  };
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("adminLoggedIn");
+    localStorage.removeItem("isAuthenticated");
+    localStorage.removeItem("isLoggedIn");
 
-  const saveSession = (result) => {
-    const user = result.user || result.data;
-    const token = result.token;
-
-    if (token) {
-      localStorage.setItem("finsecure_token", token);
-      localStorage.setItem("token", token);
-    }
-
-    if (user) {
-      localStorage.setItem("finsecure_user", JSON.stringify(user));
-      localStorage.setItem("user", JSON.stringify(user));
-      localStorage.setItem("role", user.role || "");
-    }
-
-    return user;
+    localStorage.removeItem("userName");
+    localStorage.removeItem("userEmail");
+    localStorage.removeItem("userPhone");
+    localStorage.removeItem("userAadhaar");
+    localStorage.removeItem("userPan");
   };
 
   const goTo = (newPage) => {
@@ -122,6 +134,167 @@ export default function App() {
 
     window.history.pushState({}, "", "/");
   };
+
+  const saveSession = (result) => {
+    const user = getUserFromResult(result);
+    const token = result?.token;
+
+    if (!user || !token) {
+      throw new Error("Invalid login response from backend");
+    }
+
+    const role =
+      user.role ||
+      user.accountRole ||
+      user.userRole ||
+      user.type ||
+      "customer";
+
+    const safeUser = {
+      ...user,
+      role,
+    };
+
+    localStorage.setItem("finsecure_token", token);
+    localStorage.setItem("token", token);
+
+    localStorage.setItem("finsecure_user", JSON.stringify(safeUser));
+    localStorage.setItem("user", JSON.stringify(safeUser));
+    localStorage.setItem("currentUser", JSON.stringify(safeUser));
+
+    localStorage.setItem("role", role);
+    localStorage.setItem("userRole", role);
+
+    localStorage.setItem("userName", safeUser.name || "Customer");
+    localStorage.setItem("userEmail", safeUser.email || "");
+    localStorage.setItem("userPhone", safeUser.phone || safeUser.phoneNumber || "");
+    localStorage.setItem("userAadhaar", safeUser.aadhaarNumber || "");
+    localStorage.setItem("userPan", safeUser.panNumber || "");
+
+    if (isAdminRole(role)) {
+      localStorage.setItem("finsecure_admin", JSON.stringify(safeUser));
+      localStorage.setItem("admin", JSON.stringify(safeUser));
+      localStorage.setItem("adminData", JSON.stringify(safeUser));
+      localStorage.setItem("loggedInAdmin", JSON.stringify(safeUser));
+      localStorage.setItem("adminToken", token);
+      localStorage.setItem("adminLoggedIn", "true");
+      localStorage.setItem("isAuthenticated", "true");
+      localStorage.setItem("isLoggedIn", "true");
+
+      localStorage.removeItem("finsecure_customer");
+      localStorage.removeItem("customer");
+      localStorage.removeItem("customerData");
+    }
+
+    if (isCustomerRole(role)) {
+      localStorage.setItem("finsecure_customer", JSON.stringify(safeUser));
+      localStorage.setItem("customer", JSON.stringify(safeUser));
+      localStorage.setItem("customerData", JSON.stringify(safeUser));
+
+      localStorage.removeItem("finsecure_admin");
+      localStorage.removeItem("admin");
+      localStorage.removeItem("adminData");
+      localStorage.removeItem("loggedInAdmin");
+      localStorage.removeItem("adminToken");
+      localStorage.removeItem("adminLoggedIn");
+    }
+
+    return safeUser;
+  };
+
+  const redirectByRole = (user) => {
+    const role =
+      user?.role ||
+      user?.accountRole ||
+      user?.userRole ||
+      user?.type ||
+      "customer";
+
+    if (isAdminRole(role)) {
+      goTo("admin");
+      return;
+    }
+
+    if (isCustomerRole(role)) {
+      goTo("customer");
+      return;
+    }
+
+    throw new Error(`Unknown user role: ${role}`);
+  };
+
+  useEffect(() => {
+    const savedUser =
+      localStorage.getItem("finsecure_user") ||
+      localStorage.getItem("finsecure_admin") ||
+      localStorage.getItem("finsecure_customer") ||
+      localStorage.getItem("user");
+
+    const savedToken =
+      localStorage.getItem("finsecure_token") ||
+      localStorage.getItem("adminToken") ||
+      localStorage.getItem("token");
+
+    const path = window.location.pathname;
+
+    if (savedUser && savedToken) {
+      try {
+        const user = JSON.parse(savedUser);
+        const role =
+          user?.role ||
+          user?.accountRole ||
+          user?.userRole ||
+          user?.type ||
+          "";
+
+        if (path.includes("/admin")) {
+          if (isAdminRole(role)) {
+            setPage("admin");
+            return;
+          }
+
+          clearSession();
+          setPage("auth");
+          setMode("login");
+          return;
+        }
+
+        if (path.includes("/dashboard")) {
+          if (isCustomerRole(role)) {
+            setPage("customer");
+            return;
+          }
+
+          if (isAdminRole(role)) {
+            setPage("admin");
+            window.history.replaceState({}, "", "/admin");
+            return;
+          }
+        }
+
+        if (isAdminRole(role)) {
+          setPage("admin");
+          window.history.replaceState({}, "", "/admin");
+          return;
+        }
+
+        if (isCustomerRole(role)) {
+          setPage("customer");
+          window.history.replaceState({}, "", "/dashboard");
+          return;
+        }
+      } catch {
+        clearSession();
+      }
+    }
+
+    setPage("auth");
+    setMode("login");
+  }, []);
+
+  useEffect(() => {
+    loadBranches();
+  }, []);
 
   const loadBranches = async () => {
     try {
@@ -189,15 +362,9 @@ export default function App() {
       }
 
       const user = saveSession(result);
-      const role = String(user?.role || "").toLowerCase();
 
       setSuccess("Login successful");
-
-      if (role.includes("admin") || role.includes("super")) {
-        goTo("admin");
-      } else {
-        goTo("customer");
-      }
+      redirectByRole(user);
     } catch (err) {
       setError(err.message || "Login failed");
     } finally {
@@ -234,7 +401,12 @@ export default function App() {
         throw new Error(result.message || "Admin login failed");
       }
 
-      saveSession(result);
+      const user = saveSession(result);
+
+      if (!isAdminRole(user?.role)) {
+        throw new Error("This account is not an admin account");
+      }
+
       goTo("admin");
     } catch (err) {
       setError(err.message || "Admin login failed");
@@ -287,6 +459,7 @@ export default function App() {
           branch: selectedBranch,
           email: registerForm.email,
           password: registerForm.password,
+          role: "customer",
         }),
       });
 
@@ -296,9 +469,14 @@ export default function App() {
         throw new Error(result.message || "Registration failed");
       }
 
-      saveSession(result);
+      const user = saveSession(result);
       setSuccess("Customer registered successfully");
-      goTo("customer");
+
+      if (isCustomerRole(user?.role)) {
+        goTo("customer");
+      } else {
+        goTo("customer");
+      }
     } catch (err) {
       setError(err.message || "Registration failed");
     } finally {
@@ -308,10 +486,12 @@ export default function App() {
 
   const logout = () => {
     clearSession();
+
     setLoginForm({
       email: "",
       password: "",
     });
+
     setRegisterForm({
       name: "",
       phone: "",
@@ -321,6 +501,7 @@ export default function App() {
       email: "",
       password: "",
     });
+
     setMode("login");
     setPage("auth");
     window.history.pushState({}, "", "/");
@@ -372,6 +553,7 @@ export default function App() {
                 value={loginForm.password}
                 onChange={(e) => handleLoginChange("password", e.target.value)}
               />
+
               <button
                 type="button"
                 style={styles.eyeButton}
@@ -384,7 +566,7 @@ export default function App() {
             {error && <div style={styles.error}>{error}</div>}
             {success && <div style={styles.success}>{success}</div>}
 
-            <button type="submit" style={styles.loginButton}>
+            <button type="submit" style={styles.loginButton} disabled={loading}>
               {loading ? "Please wait..." : "Login Securely"}
             </button>
           </form>
@@ -415,8 +597,12 @@ export default function App() {
               placeholder="Enter Aadhaar number"
               value={registerForm.aadhaarNumber}
               onChange={(e) =>
-                handleRegisterChange("aadhaarNumber", e.target.value)
+                handleRegisterChange(
+                  "aadhaarNumber",
+                  e.target.value.replace(/\D/g, "")
+                )
               }
+              maxLength={12}
             />
 
             <label style={styles.label}>PAN Number</label>
@@ -428,6 +614,7 @@ export default function App() {
               onChange={(e) =>
                 handleRegisterChange("panNumber", e.target.value.toUpperCase())
               }
+              maxLength={10}
             />
 
             <label style={styles.label}>Select Branch</label>
@@ -439,17 +626,21 @@ export default function App() {
               <option value="">Select branch</option>
               <option value="Main Branch">Main Branch - FINS0001001</option>
 
-              {branches.map((branch) => (
-                <option
-                  key={branch._id || branch.id || branch.name}
-                  value={branch.name}
-                >
-                  {branch.name}
-                  {branch.ifsc || branch.ifscCode
-                    ? ` - ${branch.ifsc || branch.ifscCode}`
-                    : ""}
-                </option>
-              ))}
+              {branches.map((branch) => {
+                const branchName =
+                  branch.name || branch.branchName || "Unnamed Branch";
+                const ifsc = branch.ifsc || branch.ifscCode || branch.IFSC || "";
+
+                return (
+                  <option
+                    key={branch._id || branch.id || branchName}
+                    value={branchName}
+                  >
+                    {branchName}
+                    {ifsc ? ` - ${ifsc}` : ""}
+                  </option>
+                );
+              })}
             </select>
 
             <div style={styles.branchInfo}>
@@ -478,6 +669,7 @@ export default function App() {
                   handleRegisterChange("password", e.target.value)
                 }
               />
+
               <button
                 type="button"
                 style={styles.eyeButton}
@@ -490,7 +682,7 @@ export default function App() {
             {error && <div style={styles.error}>{error}</div>}
             {success && <div style={styles.success}>{success}</div>}
 
-            <button type="submit" style={styles.loginButton}>
+            <button type="submit" style={styles.loginButton} disabled={loading}>
               {loading ? "Creating Account..." : "Create Secure Account"}
             </button>
           </form>
@@ -528,14 +720,15 @@ export default function App() {
             type="button"
             style={styles.adminButton}
             onClick={handleAdminDirectLogin}
+            disabled={loading}
           >
             Admin Direct Login
           </button>
         </div>
 
         <p style={styles.footerText}>
-          Admin users will go to Admin Portal. Customer users will go to
-          Customer Dashboard automatically.
+          Admin, Super Admin, Branch Manager and Staff users will go to Admin
+          Portal. Customer users will go to Customer Dashboard automatically.
         </p>
       </div>
     </div>
