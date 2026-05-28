@@ -561,20 +561,71 @@ function Dashboard() {
     }
   };
 
-  const loadTransactions = async () => {
-    try {
-      const res = await fetch(`${API}/transactions`, {
-        headers: getAuthHeaders(),
-      });
+  const recalculateDashboardFromTransactions = (rows = []) => {
+  const toNumber = (value) => {
+    const clean = String(value || "")
+      .replace(/₹/g, "")
+      .replace(/,/g, "")
+      .replace(/\+/g, "")
+      .trim();
 
-      const result = await res.json();
-      const data = normalizeArrayResponse(result);
-
-      setTransactions(data);
-    } catch {
-      setTransactions([]);
-    }
+    const numberValue = Number(clean);
+    return Number.isNaN(numberValue) ? 0 : numberValue;
   };
+
+  const safeRows = Array.isArray(rows) ? rows : [];
+
+  const totalIncome = safeRows.reduce((sum, item) => {
+    const type = String(item.type || item.transactionType || "").toLowerCase();
+
+    if (type.includes("income") || type.includes("credit") || type.includes("deposit")) {
+      return sum + toNumber(item.amount);
+    }
+
+    return sum;
+  }, 0);
+
+  const totalExpense = safeRows.reduce((sum, item) => {
+    const type = String(item.type || item.transactionType || "").toLowerCase();
+
+    if (
+      type.includes("expense") ||
+      type.includes("debit") ||
+      type.includes("withdraw") ||
+      type.includes("transfer")
+    ) {
+      return sum + toNumber(item.amount);
+    }
+
+    return sum;
+  }, 0);
+
+  const balance = Math.max(totalIncome - totalExpense, 0);
+
+  setDashboard((prev) => ({
+    ...prev,
+    totalIncome,
+    totalExpense,
+    balance,
+  }));
+};
+
+  const loadTransactions = async () => {
+  try {
+    const res = await fetch(`${API}/transactions`, {
+      headers: getAuthHeaders(),
+    });
+
+    const result = await res.json();
+    const data = normalizeArrayResponse(result);
+
+    setTransactions(data);
+    recalculateDashboardFromTransactions(data);
+  } catch {
+    setTransactions([]);
+    recalculateDashboardFromTransactions([]);
+  }
+};
 
   const loadProfile = async () => {
     try {
@@ -626,58 +677,86 @@ function Dashboard() {
   };
 
   const saveTransaction = async (transactionType) => {
-    if (!entryForm.amount || !entryForm.category) {
-      alert("Please enter amount and category");
+  const amount = Number(entryForm.amount || 0);
+  const currentBalance = cleanNumber(dashboard.balance);
+
+  if (!entryForm.amount || !entryForm.category) {
+    alert("Please enter amount and category");
+    return;
+  }
+
+  if (amount <= 0) {
+    alert("Please enter a valid amount");
+    return;
+  }
+
+  if (transactionType === "expense" && amount > currentBalance) {
+    alert(
+      `Transaction failed due to insufficient balance.\n\nAvailable Balance: ${formatMoney(
+        currentBalance
+      )}\nTransaction Amount: ${formatMoney(amount)}`
+    );
+
+    showToast("Transaction failed: Insufficient balance");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/transactions`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        amount,
+        type: transactionType,
+        category: entryForm.category,
+        description:
+          entryForm.description ||
+          `${transactionType === "income" ? "Income" : "Expense"} entry`,
+        paymentMethod: entryForm.paymentMethod,
+        date: entryForm.date,
+        status: "Completed",
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.message || "Transaction not saved");
       return;
     }
 
-    if (Number(entryForm.amount) <= 0) {
-      alert("Please enter a valid amount");
-      return;
-    }
+    setDashboard((prev) => ({
+      ...prev,
+      totalIncome:
+        transactionType === "income"
+          ? cleanNumber(prev.totalIncome) + amount
+          : cleanNumber(prev.totalIncome),
+      totalExpense:
+        transactionType === "expense"
+          ? cleanNumber(prev.totalExpense) + amount
+          : cleanNumber(prev.totalExpense),
+      balance:
+        transactionType === "income"
+          ? cleanNumber(prev.balance) + amount
+          : cleanNumber(prev.balance) - amount,
+    }));
 
-    try {
-      const res = await fetch(`${API}/transactions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        body: JSON.stringify({
-          amount: Number(entryForm.amount),
-          type: transactionType,
-          category: entryForm.category,
-          description:
-            entryForm.description ||
-            `${transactionType === "income" ? "Income" : "Expense"} entry`,
-          paymentMethod: entryForm.paymentMethod,
-          date: entryForm.date,
-        }),
-      });
+    setEntryForm({
+      amount: "",
+      type: "income",
+      category: "",
+      description: "",
+      paymentMethod: "Bank Transfer",
+      date: new Date().toISOString().split("T")[0],
+    });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.message || "Transaction not saved");
-        return;
-      }
-
-      setEntryForm({
-        amount: "",
-        type: "income",
-        category: "",
-        description: "",
-        paymentMethod: "Bank Transfer",
-        date: new Date().toISOString().split("T")[0],
-      });
-
-      showToast("Transaction saved successfully");
-      loadDashboard();
-      loadTransactions();
-    } catch {
-      alert("Cannot connect to backend");
-    }
-  };
+    showToast("Transaction saved successfully");
+    loadDashboard();
+    loadTransactions();
+  } catch {
+    alert("Cannot connect to backend");
+  }
+};
 
   const deleteTransaction = async (id) => {
     try {
@@ -701,34 +780,105 @@ function Dashboard() {
     }
   };
 
-  const submitTransfer = (e) => {
-    e.preventDefault();
+  const submitTransfer = async (e) => {
+  e.preventDefault();
 
-    if (
-      !transferForm.beneficiaryName ||
-      !transferForm.beneficiaryAccount ||
-      !transferForm.ifsc ||
-      !transferForm.bankName ||
-      !transferForm.amount
-    ) {
-      alert("Please fill all transfer details");
+  if (
+    !transferForm.beneficiaryName ||
+    !transferForm.beneficiaryAccount ||
+    !transferForm.ifsc ||
+    !transferForm.bankName ||
+    !transferForm.amount
+  ) {
+    alert("Please fill all transfer details");
+    return;
+  }
+
+  const transferAmount = Number(transferForm.amount || 0);
+  const currentBalance = cleanNumber(dashboard.balance);
+
+  if (transferAmount <= 0) {
+    alert("Please enter a valid transfer amount");
+    return;
+  }
+
+  const baseTransfer = {
+    id: Date.now().toString(),
+    userEmail,
+    customerId,
+    customerName: userName,
+    fromAccount: customerAccountNumber,
+    branch: customerBranch,
+    ifsc: customerIFSC,
+    ...transferForm,
+    amount: transferAmount,
+    date: new Date().toLocaleDateString("en-IN"),
+    time: new Date().toLocaleTimeString("en-IN"),
+  };
+
+  if (transferAmount > currentBalance) {
+    const failedTransfer = {
+      ...baseTransfer,
+      status: "Failed",
+      reason: "Insufficient balance",
+    };
+
+    const updatedTransfers = [...transferHistory, failedTransfer];
+    setTransferHistory(updatedTransfers);
+    localStorage.setItem("transferHistory", JSON.stringify(updatedTransfers));
+
+    alert(
+      `Transfer failed due to insufficient balance.\n\nAvailable Balance: ${formatMoney(
+        currentBalance
+      )}\nTransfer Amount: ${formatMoney(transferAmount)}`
+    );
+
+    showToast("Transfer failed: Insufficient balance");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/transactions`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        amount: transferAmount,
+        type: "expense",
+        category: "Fund Transfer",
+        description:
+          transferForm.remarks ||
+          `Transfer to ${transferForm.beneficiaryName}`,
+        paymentMethod: transferForm.transferType,
+        date: new Date().toISOString().split("T")[0],
+        status: "Completed",
+        beneficiaryName: transferForm.beneficiaryName,
+        beneficiaryAccount: transferForm.beneficiaryAccount,
+        beneficiaryIfsc: transferForm.ifsc,
+        bankName: transferForm.bankName,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.message || "Transfer not saved");
       return;
     }
 
-    const newTransfer = {
-      id: Date.now().toString(),
-      userEmail,
-      ...transferForm,
-      amount: Number(transferForm.amount),
+    const successTransfer = {
+      ...baseTransfer,
       status: "Success",
-      date: new Date().toLocaleDateString(),
-      time: new Date().toLocaleTimeString(),
     };
 
-    const updatedTransfers = [...transferHistory, newTransfer];
-
+    const updatedTransfers = [...transferHistory, successTransfer];
     setTransferHistory(updatedTransfers);
     localStorage.setItem("transferHistory", JSON.stringify(updatedTransfers));
+
+    setDashboard((prev) => ({
+      ...prev,
+      totalExpense: cleanNumber(prev.totalExpense) + transferAmount,
+      balance: cleanNumber(prev.balance) - transferAmount,
+    }));
 
     setTransferForm({
       beneficiaryName: "",
@@ -741,8 +891,13 @@ function Dashboard() {
     });
 
     setShowTransferForm(false);
-    showToast("Fund transfer submitted");
-  };
+    showToast("Fund transfer successful");
+    loadDashboard();
+    loadTransactions();
+  } catch {
+    alert("Cannot connect to backend");
+  }
+};
 
   const loadLoanApplications = async () => {
   try {
