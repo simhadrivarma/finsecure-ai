@@ -701,11 +701,35 @@ function Dashboard() {
     return;
   }
 
+  const customerName =
+    customerProfile?.name ||
+    customerProfile?.customerName ||
+    localStorage.getItem("userName") ||
+    userName ||
+    "Customer";
+
+  const accountNo =
+    customerProfile?.accountNumber ||
+    localStorage.getItem("accountNumber") ||
+    customerAccountNumber ||
+    "";
+
   try {
     const res = await fetch(`${API}/transactions`, {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({
+        customer: customerName,
+        customerName: customerName,
+        userEmail,
+        email: userEmail,
+
+        accountNumber: accountNo,
+        customerId,
+        branch: customerBranch,
+        ifsc: customerIFSC,
+        cif: customerCIF,
+
         amount,
         type: transactionType,
         category: entryForm.category,
@@ -714,7 +738,13 @@ function Dashboard() {
           `${transactionType === "income" ? "Income" : "Expense"} entry`,
         paymentMethod: entryForm.paymentMethod,
         date: entryForm.date,
-        status: "Completed",
+        time: new Date().toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        status: "Success",
+        risk: "Normal",
+        riskScore: 0,
       }),
     });
 
