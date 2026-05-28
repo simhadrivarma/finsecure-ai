@@ -744,38 +744,131 @@ function Dashboard() {
     showToast("Fund transfer submitted");
   };
 
-  const submitLoanApplication = (e) => {
-    e.preventDefault();
+  const loadLoanApplications = async () => {
+  try {
+    const res = await fetch(`${API}/loans`, {
+      headers: getAuthHeaders(),
+    });
 
-    if (
-      !loanForm.fullName ||
-      !loanForm.email ||
-      !loanForm.phone ||
-      !loanForm.amount ||
-      !loanForm.monthlyIncome ||
-      !loanForm.tenure ||
-      !loanForm.purpose ||
-      !loanForm.address
-    ) {
-      alert("Please fill all loan application details");
-      return;
+    const result = await res.json();
+    const allLoans = normalizeArrayResponse(result);
+
+    const myLoans = allLoans.filter((loan) => {
+      const loanEmail =
+        loan.userEmail || loan.email || loan.customerEmail || loan.applicantEmail;
+
+      const loanCustomerId =
+        loan.customerId || loan.customerID || loan.customer_id || "";
+
+      return (
+        cleanText(loanEmail) === cleanText(userEmail) ||
+        cleanText(loanCustomerId) === cleanText(customerId)
+      );
+    });
+
+    setLoanApplications(myLoans.length ? myLoans : allLoans);
+  } catch (err) {
+    console.error("Failed to load loans:", err);
+    setLoanApplications(safeJSON("loanApplications", []));
+  }
+};
+
+  const submitLoanApplication = async (e) => {
+  e.preventDefault();
+
+  if (
+    !loanForm.fullName ||
+    !loanForm.email ||
+    !loanForm.phone ||
+    !loanForm.amount ||
+    !loanForm.monthlyIncome ||
+    !loanForm.tenure ||
+    !loanForm.purpose ||
+    !loanForm.address
+  ) {
+    alert("Please fill all loan application details");
+    return;
+  }
+
+  const loanAmount = Number(loanForm.amount || 0);
+
+  if (loanAmount <= 0) {
+    alert("Please enter a valid loan amount");
+    return;
+  }
+
+  const tenureText = String(loanForm.tenure || "");
+  const tenureMonths = tenureText.includes("Year")
+    ? Number(tenureText.replace(/\D/g, "")) * 12
+    : Number(tenureText.replace(/\D/g, "")) || 12;
+
+  const interestRate = 10.5;
+  const totalInterest = Math.round((loanAmount * interestRate * tenureMonths) / (12 * 100));
+  const totalPayable = loanAmount + totalInterest;
+  const emi = Math.ceil(totalPayable / tenureMonths);
+
+  const startDate = new Date();
+  const endDate = new Date();
+  endDate.setMonth(endDate.getMonth() + tenureMonths);
+
+  const loanPayload = {
+    customer: userName,
+    customerName: loanForm.fullName,
+    fullName: loanForm.fullName,
+    userEmail,
+    email: loanForm.email,
+    customerEmail: loanForm.email,
+    phone: loanForm.phone,
+
+    customerId,
+    accountNumber: customerAccountNumber,
+    accountType: customerAccountType,
+    branch: customerBranch,
+    ifsc: customerIFSC,
+    cif: customerCIF,
+
+    loanType: loanForm.loanType,
+    amount: loanAmount,
+    loanAmount,
+    monthlyIncome: Number(loanForm.monthlyIncome || 0),
+    employmentType: loanForm.employmentType,
+    tenure: loanForm.tenure,
+    tenureMonths,
+    purpose: loanForm.purpose,
+    address: loanForm.address,
+    existingLoan: loanForm.existingLoan,
+
+    interest: `${interestRate}%`,
+    interestRate,
+    emi,
+    paid: 0,
+    pending: totalPayable,
+    totalPayable,
+    startDate: startDate.toISOString(),
+    endDate: endDate.toISOString(),
+    appliedDate: startDate.toLocaleDateString("en-IN"),
+    status: "Pending",
+  };
+
+  try {
+    const res = await fetch(`${API}/loans`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(loanPayload),
+    });
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(result.message || "Loan application not saved");
     }
 
-    const newApplication = {
-      id: Date.now().toString(),
-      userEmail,
-      ...loanForm,
-      status: "Pending",
-      appliedDate: new Date().toLocaleDateString(),
-    };
+    const savedLoan = result.data || result.loan || result.record || loanPayload;
 
-    const updatedApplications = [...loanApplications, newApplication];
+    const updatedApplications = [...loanApplications, savedLoan];
 
     setLoanApplications(updatedApplications);
-    localStorage.setItem(
-      "loanApplications",
-      JSON.stringify(updatedApplications)
-    );
+    localStorage.setItem("loanApplications", JSON.stringify(updatedApplications));
 
     setLoanForm({
       fullName: localStorage.getItem("userName") || "",
@@ -791,8 +884,12 @@ function Dashboard() {
       existingLoan: "No",
     });
 
-    showToast("Loan application submitted");
-  };
+    showToast("Loan application submitted to admin successfully");
+    await loadLoanApplications();
+  } catch (err) {
+    alert(err.message || "Cannot submit loan application to backend");
+  }
+};
 
   const submitInvestment = (e) => {
     e.preventDefault();
@@ -1024,6 +1121,7 @@ function Dashboard() {
       loadDashboard();
       loadTransactions();
       loadProfile();
+      loadLoanApplications();
     }
   }, [token]);
 
