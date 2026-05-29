@@ -206,19 +206,29 @@ const adminRoles = [
 ];
 
 const configs = {
-  admin: {
+  
+    admin: {
     title: "Admin",
     pageTitle: "Admin Management",
     buttonText: "Add Admin",
     api: API.admin,
     columns: [
       ["id", "Admin ID"],
+      ["employeeId", "Employee ID"],
       ["name", "Name"],
       ["email", "Email"],
       ["role", "Role"],
+      ["branch", "Branch"],
+      ["ifsc", "IFSC"],
       ["status", "Status"],
     ],
     fields: [
+      {
+        name: "employeeId",
+        label: "Employee ID",
+        requiredOnAdd: true,
+        placeholder: "Enter valid employee ID",
+      },
       { name: "name", label: "Admin Name", required: true },
       { name: "email", label: "Email", required: true },
       {
@@ -235,6 +245,20 @@ const configs = {
         required: true,
         defaultValue: "Branch Manager",
         options: adminRoles,
+      },
+      {
+        name: "branch",
+        label: "Branch",
+        required: true,
+        readOnly: true,
+        placeholder: "Auto-filled from employee",
+      },
+      {
+        name: "ifsc",
+        label: "IFSC Code",
+        required: true,
+        readOnly: true,
+        placeholder: "Auto-filled from employee",
       },
       {
         name: "status",
@@ -600,6 +624,8 @@ function LoginPage({ onLogin }) {
       setLoading(true);
       setError("");
 
+
+
       const response = await fetch(API.login, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -916,7 +942,78 @@ function Dashboard({ dashboardData, counts }) {
   );
 }
 
-function EntityModal({ config, mode, item, onClose, onSave, branches = [] }) {
+function EntityModal({
+  config,
+  mode,
+  item,
+  onClose,
+  onSave,
+  branches = [],
+  employees = [],
+}) {
+
+  const employeeOptions = Array.isArray(employees) ? employees : [];
+
+const getEmployeeId = (employee) => {
+  return String(
+    employee?.employeeId ||
+      employee?.employeeID ||
+      employee?.id ||
+      ""
+  ).trim();
+};
+
+const getEmployeeName = (employee) => {
+  return String(employee?.name || employee?.employeeName || "").trim();
+};
+
+const getEmployeeEmail = (employee) => {
+  return String(employee?.email || employee?.employeeEmail || "").trim();
+};
+
+const getEmployeeBranch = (employee) => {
+  return String(
+    employee?.branch ||
+      employee?.branchName ||
+      employee?.assignedBranch ||
+      ""
+  ).trim();
+};
+
+const getEmployeeIfsc = (employee) => {
+  return String(employee?.ifsc || employee?.ifscCode || employee?.IFSC || "")
+    .toUpperCase()
+    .trim();
+};
+
+const handleEmployeeIdChange = (value) => {
+  const enteredId = String(value || "").trim();
+
+  const matchedEmployee = employeeOptions.find((employee) => {
+    const empId = getEmployeeId(employee).toLowerCase();
+    return empId && empId === enteredId.toLowerCase();
+  });
+
+  if (!matchedEmployee) {
+    setForm((prev) => ({
+      ...prev,
+      employeeId: value,
+    }));
+    return;
+  }
+
+  setForm((prev) => ({
+    ...prev,
+    employeeId: getEmployeeId(matchedEmployee),
+    name: getEmployeeName(matchedEmployee) || prev.name || "",
+    email: getEmployeeEmail(matchedEmployee) || prev.email || "",
+    branch: getEmployeeBranch(matchedEmployee) || "",
+    ifsc: getEmployeeIfsc(matchedEmployee) || "",
+  }));
+
+  setFormError("");
+};
+
   const createEmpty = () => {
     const obj = {};
 
@@ -1331,6 +1428,11 @@ function EntityModal({ config, mode, item, onClose, onSave, branches = [] }) {
                     placeholder={getPlaceholder(field)}
                     onChange={(e) => {
                       let value = e.target.value;
+                      
+                      if (field.name === "employeeId") {
+                     handleEmployeeIdChange(value);
+                    return;
+                    }
 
                       if (field.type === "number") {
                         value = Number(value);
@@ -2653,12 +2755,48 @@ export default function App() {
       const config = configs[type];
       const isEdit = modal.mode === "edit";
 
+      let finalForm = { ...form };
+
+if (type === "admin") {
+  const employeeId = String(finalForm.employeeId || "").trim();
+
+  if (!employeeId) {
+    throw new Error("Employee ID is required to create admin.");
+  }
+
+  const matchedEmployee = (data.employee || []).find((employee) => {
+    const idOne = String(employee.id || "").trim().toLowerCase();
+    const idTwo = String(employee.employeeId || "").trim().toLowerCase();
+    const given = employeeId.toLowerCase();
+
+    return idOne === given || idTwo === given;
+  });
+
+  if (!matchedEmployee) {
+    throw new Error(
+      "Invalid Employee ID. Please enter a valid employee ID from Employee Management."
+    );
+  }
+
+  finalForm.employeeId = matchedEmployee.id || matchedEmployee.employeeId || employeeId;
+  finalForm.branch = matchedEmployee.branch || matchedEmployee.branchName || finalForm.branch || "";
+  finalForm.ifsc = matchedEmployee.ifsc || matchedEmployee.ifscCode || finalForm.ifsc || "";
+
+  if (!finalForm.branch) {
+    throw new Error("Selected employee does not have a branch assigned.");
+  }
+
+  if (!finalForm.ifsc) {
+    throw new Error("Selected employee does not have an IFSC code assigned.");
+  }
+}
+
       const response = await fetch(
         isEdit ? `${config.api}/${form.id}` : config.api,
         {
           method: isEdit ? "PUT" : "POST",
           headers: getAuthHeaders(),
-          body: JSON.stringify(form),
+          body: JSON.stringify(finalForm),
         }
       );
 
@@ -2674,7 +2812,7 @@ export default function App() {
         throw new Error(result.message || "Save failed");
       }
 
-      const savedRecord = result.data || form;
+      const savedRecord = result.data || finalForm;
       const targetName = getRecordLabel(savedRecord, config.title);
 
       if (type !== "auditLog") {
@@ -3015,6 +3153,7 @@ export default function App() {
           config={configs[modal.type]}
           mode={modal.mode}
           item={modal.item}
+          branches={branchRows.length ? branchRows : data.branch}
           branches={data.branch || []}
           onClose={() =>
             setModal({
