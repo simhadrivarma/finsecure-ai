@@ -1,210 +1,534 @@
-// @ts-nocheck
-
-const express = require("express");
-const jwt = require("jsonwebtoken");
-const mongoose = require("mongoose");
+import express, { Request, Response } from "express";
+import jwt, { JwtPayload } from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || "finsecure_ai_secret_key";
+type BankRecord = Record<string, any>;
+type BankData = Record<string, BankRecord[]>;
 
-const HIDDEN_FIELDS = [
+const SECRET =
+  process.env.JWT_SECRET ||
+  process.env.SECRET_KEY ||
+  process.env.JWT_PRIVATE_KEY ||
+  "finsecure_ai_secret_key";
+
+const hiddenFields = new Set([
   "password",
   "pass",
-  "hashedPassword",
-  "passwordHash",
-  "resetToken",
+  "hashedpassword",
+  "passwordhash",
   "token",
-  "accessToken",
-  "refreshToken",
+  "accesstoken",
+  "refreshtoken",
+  "resettoken",
   "otp",
+  "secret",
+  "apikey",
+  "api_key",
   "__v",
-];
+]);
 
-const COLLECTIONS = {
-  customers: ["customers", "customer"],
-  employees: ["employees", "employee"],
+const collectionMap: Record<string, string[]> = {
+  customers: ["customers", "users", "accounts", "customer"],
+  employees: ["employees", "staff", "employee"],
   admins: ["admins", "admin"],
   branches: ["branches", "branch"],
-  loans: ["loans", "loan"],
-  transactions: ["transactions", "transaction"],
-  auditLogs: ["auditlogs", "auditLogs", "audit_logs"],
+  loans: ["loans", "loan", "loanapplications", "loan_applications"],
+  transactions: [
+    "transactions",
+    "transaction",
+    "admintransactions",
+    "admin_transactions",
+  ],
+  auditLogs: ["auditlogs", "auditLogs", "audit_logs", "logs"],
 };
 
-function cleanText(value) {
+function cleanText(value: any) {
   return String(value || "").trim().toLowerCase();
 }
 
-function toNumber(value) {
-  const n = Number(String(value || 0).replace(/₹|,/g, ""));
+function normalText(value: any) {
+  return String(value || "").trim();
+}
+
+function numberValue(value: any) {
+  const n = Number(
+    String(value || 0)
+      .replace(/₹/g, "")
+      .replace(/,/g, "")
+      .replace(/\+/g, "")
+      .trim()
+  );
+
   return Number.isNaN(n) ? 0 : n;
 }
 
-function money(value) {
-  return `₹${toNumber(value).toLocaleString("en-IN")}`;
+function money(value: any) {
+  return `₹${numberValue(value).toLocaleString("en-IN")}`;
 }
 
-function isHiddenField(key) {
-  return HIDDEN_FIELDS.includes(String(key));
+function isHiddenKey(key: string) {
+  return hiddenFields.has(cleanText(key).replace(/_/g, ""));
 }
 
-function cleanRecord(record) {
-  const safe = {};
+function sanitizeValue(value: any): any {
+  if (value instanceof Date) return value.toISOString();
+
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      typeof item === "object" && item !== null ? sanitizeRecord(item) : item
+    );
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return sanitizeRecord(value);
+  }
+
+  return value;
+}
+
+function sanitizeRecord(record: BankRecord = {}) {
+  const safe: BankRecord = {};
 
   Object.entries(record || {}).forEach(([key, value]) => {
-    if (isHiddenField(key)) return;
+    if (isHiddenKey(key)) return;
 
     if (key === "_id") {
-      safe._id = String(value);
       safe.id = String(value);
       return;
     }
 
-    if (value instanceof Date) {
-      safe[key] = value.toISOString();
-      return;
-    }
-
-    safe[key] = value;
+    safe[key] = sanitizeValue(value);
   });
 
   return safe;
 }
 
-function getToken(req) {
-  const auth = req.headers.authorization || "";
-  if (auth.startsWith("Bearer ")) return auth.replace("Bearer ", "").trim();
-  return auth.trim();
+function sanitizeList(records: BankRecord[]) {
+  return records.map((item) => sanitizeRecord(item));
 }
 
-function getUserFromToken(req) {
-  const token = getToken(req);
-
-  if (!token) {
-    return null;
-  }
-
-  try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch (error) {
-    console.error("Admin AI token error:", error.message);
-    return null;
-  }
+function normalizeRole(role: any) {
+  return cleanText(role).replace(/_/g, " ").replace(/-/g, " ");
 }
 
-function normalizeRole(role) {
-  return cleanText(role).replace(/_/g, " ");
-}
-
-function isSuperAdmin(role) {
+function isSuperAdmin(role: string) {
   const r = normalizeRole(role);
-  return r.includes("super admin") || r === "super";
+  return r.includes("super admin") || r === "superadmin" || r === "super";
 }
 
-function canAccess(role, moduleName) {
-  const r = normalizeRole(role);
+function roleCanAccess(role: string, module: string) {
+  const cleanRole = normalizeRole(role);
 
-  if (isSuperAdmin(r)) return true;
+  if (isSuperAdmin(cleanRole)) return true;
 
-  const permissions = {
-    admin: ["customers", "employees", "branches", "loans", "transactions"],
-    "branch manager": ["customers", "employees", "branches", "loans", "transactions"],
-    manager: ["customers", "employees", "branches", "loans", "transactions"],
-    "loan officer": ["customers", "loans", "branches"],
+  const permissions: Record<string, string[]> = {
+    admin: [
+      "customers",
+      "employees",
+      "branches",
+      "loans",
+      "transactions",
+      "reports",
+    ],
+    "branch manager": [
+      "customers",
+      "employees",
+      "branches",
+      "loans",
+      "transactions",
+      "reports",
+    ],
+    manager: [
+      "customers",
+      "employees",
+      "branches",
+      "loans",
+      "transactions",
+      "reports",
+    ],
+    staff: ["customers", "branches", "loans", "transactions"],
     cashier: ["customers", "transactions", "branches"],
+    "loan officer": ["customers", "loans", "branches"],
+    "relationship manager": ["customers", "loans", "branches"],
     "customer support": ["customers", "transactions", "branches"],
     "customer support executive": ["customers", "transactions", "branches"],
-    "relationship manager": ["customers", "loans", "branches"],
-    "fraud analyst": ["customers", "transactions"],
+    "fraud analyst": ["customers", "transactions", "reports"],
+    "report analyst": [
+      "customers",
+      "employees",
+      "branches",
+      "loans",
+      "transactions",
+      "reports",
+    ],
   };
 
-  return permissions[r]?.includes(moduleName) || false;
+  return permissions[cleanRole]?.includes(module) || false;
 }
 
-async function getExistingCollectionName(possibleNames) {
-  const db = mongoose.connection?.db;
+async function getCollection(logicalName: string) {
+  const db = mongoose.connection.db;
 
-  if (!db) {
-    return null;
-  }
+  if (!db) return [];
 
-  const collections = await db.listCollections().toArray();
-  const existing = collections.map((item) => item.name);
+  const existingCollections = await db.listCollections().toArray();
+  const existingNames = existingCollections.map((item) => item.name);
 
-  return possibleNames.find((name) => existing.includes(name)) || null;
+  const possibleNames = collectionMap[logicalName] || [logicalName];
+  const realName = possibleNames.find((name) => existingNames.includes(name));
+
+  if (!realName) return [];
+
+  const data = await db
+    .collection(realName)
+    .find({})
+    .sort({ createdAt: -1, date: -1, _id: -1 } as any)
+    .limit(5000)
+    .toArray();
+
+  return sanitizeList(data);
 }
 
-async function loadCollection(type) {
-  try {
-    const db = mongoose.connection?.db;
-
-    if (!db) {
-      console.warn("Admin AI: MongoDB db not ready");
-      return [];
-    }
-
-    const collectionName = await getExistingCollectionName(COLLECTIONS[type] || [type]);
-
-    if (!collectionName) {
-      console.warn(`Admin AI: collection not found for ${type}`);
-      return [];
-    }
-
-    const records = await db.collection(collectionName).find({}).limit(3000).toArray();
-
-    return records.map(cleanRecord);
-  } catch (error) {
-    console.error(`Admin AI load ${type} error:`, error.message);
-    return [];
-  }
+function getRecordBranch(record: BankRecord) {
+  return cleanText(
+    record.branch ||
+      record.branchName ||
+      record.branch_name ||
+      record.branchCode ||
+      record.branchId
+  );
 }
 
-function filterByBranch(records, admin, role) {
+function getRecordIfsc(record: BankRecord) {
+  return cleanText(record.ifsc || record.ifscCode || record.IFSC);
+}
+
+function filterByBranch(records: BankRecord[], admin: BankRecord, role: string) {
   if (isSuperAdmin(role)) return records;
 
-  const adminBranch = cleanText(admin.branch || admin.branchName);
-  const adminIfsc = cleanText(admin.ifsc || admin.ifscCode);
+  const adminBranch = getRecordBranch(admin);
+  const adminIfsc = getRecordIfsc(admin);
 
-  if (!adminBranch && !adminIfsc) {
-    return records;
-  }
+  if (!adminBranch && !adminIfsc) return records;
 
   return records.filter((record) => {
-    const recordBranch = cleanText(record.branch || record.branchName);
-    const recordIfsc = cleanText(record.ifsc || record.ifscCode);
+    const recordBranch = getRecordBranch(record);
+    const recordIfsc = getRecordIfsc(record);
 
-    return recordBranch === adminBranch || recordIfsc === adminIfsc;
+    return (
+      (adminBranch && recordBranch === adminBranch) ||
+      (adminIfsc && recordIfsc === adminIfsc)
+    );
   });
 }
 
-function findByQuestion(question, records, fields) {
+function getAuthUser(req: Request) {
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.replace("Bearer ", "")
+    : authHeader;
+
+  if (!token) return null;
+
+  try {
+    const decoded = jwt.verify(token, SECRET) as JwtPayload;
+
+    return {
+      id: decoded.id || decoded._id || decoded.userId || "",
+      email: decoded.email || "",
+      role: decoded.role || "",
+      name: decoded.name || "",
+      branch: decoded.branch || decoded.branchName || "",
+      ifsc: decoded.ifsc || decoded.ifscCode || "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getId(record: BankRecord) {
+  return normalText(
+    record.id || record._id || record.customerId || record.employeeId || ""
+  );
+}
+
+function getCustomerName(record: BankRecord) {
+  return normalText(
+    record.name ||
+      record.customerName ||
+      record.fullName ||
+      record.username ||
+      record.userName ||
+      ""
+  );
+}
+
+function getEmail(record: BankRecord) {
+  return normalText(record.email || record.customerEmail || record.userEmail || "");
+}
+
+function getAccountNumber(record: BankRecord) {
+  return normalText(
+    record.accountNumber ||
+      record.accountNo ||
+      record.account ||
+      record.accNo ||
+      record.bankAccountNumber ||
+      ""
+  );
+}
+
+function getCif(record: BankRecord) {
+  return normalText(record.cif || record.cifNumber || record.CIF || "");
+}
+
+function getPhone(record: BankRecord) {
+  return normalText(
+    record.phone || record.phoneNumber || record.mobile || record.contact || ""
+  );
+}
+
+function recordSearchText(record: BankRecord) {
+  const values = [
+    record.id,
+    record._id,
+    record.name,
+    record.customerName,
+    record.fullName,
+    record.email,
+    record.customerEmail,
+    record.userEmail,
+    record.phone,
+    record.phoneNumber,
+    record.mobile,
+    record.accountNumber,
+    record.accountNo,
+    record.cif,
+    record.cifNumber,
+    record.employeeId,
+    record.adminId,
+    record.branch,
+    record.branchName,
+    record.ifsc,
+    record.ifscCode,
+    record.loanId,
+    record.transactionId,
+    record.reference,
+  ];
+
+  return values.map(cleanText).filter(Boolean).join(" ");
+}
+
+function findRecord(question: string, records: BankRecord[]) {
   const q = cleanText(question);
 
+  const exact = records.find((record) => {
+    const search = recordSearchText(record);
+    return search && q.includes(search);
+  });
+
+  if (exact) return exact;
+
   return records.find((record) => {
-    return fields.some((field) => {
-      const value = cleanText(record[field]);
-      return value && value.length >= 3 && q.includes(value);
+    const possibleValues = [
+      getCustomerName(record),
+      getEmail(record),
+      getPhone(record),
+      getAccountNumber(record),
+      getCif(record),
+      getId(record),
+      record.employeeId,
+      record.adminId,
+      record.branch,
+      record.branchName,
+      record.ifsc,
+      record.ifscCode,
+      record.loanId,
+      record.transactionId,
+      record.reference,
+    ];
+
+    return possibleValues.some((value) => {
+      const cleaned = cleanText(value);
+      return cleaned && cleaned.length >= 3 && q.includes(cleaned);
     });
   });
 }
 
-function formatRecord(title, record) {
-  if (!record) return `${title} not found.`;
-
-  const lines = Object.entries(record)
-    .filter(([key]) => !isHiddenField(key))
-    .map(([key, value]) => {
-      const label = key
-        .replace(/([A-Z])/g, " $1")
-        .replace(/^./, (char) => char.toUpperCase());
-
-      return `• ${label}: ${value === "" || value === null || value === undefined ? "-" : value}`;
-    });
-
-  return `${title}\n${lines.join("\n")}`;
+function labelFromKey(key: string) {
+  return key
+    .replace(/_/g, " ")
+    .replace(/([A-Z])/g, " $1")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^./, (char) => char.toUpperCase());
 }
 
-function calculateEmi(question) {
+function formatRecord(title: string, record: BankRecord) {
+  if (!record) return `${title} not found.`;
+
+  const safe = sanitizeRecord(record);
+
+  const lines = Object.entries(safe)
+    .filter(([key]) => !isHiddenKey(key))
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([key, value]) => {
+      const finalValue =
+        typeof value === "object" ? JSON.stringify(value) : String(value);
+
+      return `• ${labelFromKey(key)}: ${finalValue}`;
+    });
+
+  return `${title}\n${lines.length ? lines.join("\n") : "No details found."}`;
+}
+
+function formatCustomer(record: BankRecord) {
+  if (!record) return "Customer not found.";
+
+  return [
+    "Customer Complete Details",
+    `• Customer ID: ${getId(record) || "-"}`,
+    `• Name: ${getCustomerName(record) || "-"}`,
+    `• Email: ${getEmail(record) || "-"}`,
+    `• Phone: ${getPhone(record) || "-"}`,
+    `• Account Number: ${getAccountNumber(record) || "-"}`,
+    `• Account Type: ${record.accountType || "-"}`,
+    `• IFSC: ${record.ifsc || record.ifscCode || "-"}`,
+    `• CIF: ${getCif(record) || "-"}`,
+    `• Branch: ${record.branch || record.branchName || "-"}`,
+    `• Balance: ${money(record.balance)}`,
+    `• Total Income: ${money(record.totalIncome)}`,
+    `• Total Expense: ${money(record.totalExpense)}`,
+    `• KYC: ${record.kyc || record.kycStatus || "-"}`,
+    `• Status: ${record.status || "-"}`,
+    `• Aadhaar Number: ${record.aadhaarNumber || record.aadhaar || "-"}`,
+    `• PAN Number: ${record.panNumber || record.pan || "-"}`,
+  ].join("\n");
+}
+
+function formatEmployee(record: BankRecord) {
+  if (!record) return "Employee not found.";
+
+  return [
+    "Employee Complete Details",
+    `• Employee ID: ${record.employeeId || record.id || "-"}`,
+    `• Name: ${record.name || record.employeeName || "-"}`,
+    `• Email: ${record.email || "-"}`,
+    `• Phone: ${record.phone || record.phoneNumber || "-"}`,
+    `• Role: ${record.role || record.designation || "-"}`,
+    `• Department: ${record.department || "-"}`,
+    `• Branch: ${record.branch || record.branchName || "-"}`,
+    `• IFSC: ${record.ifsc || record.ifscCode || "-"}`,
+    `• Salary: ${record.salary ? money(record.salary) : "-"}`,
+    `• Status: ${record.status || "-"}`,
+  ].join("\n");
+}
+
+function formatBranch(record: BankRecord) {
+  if (!record) return "Branch not found.";
+
+  return [
+    "Branch Complete Details",
+    `• Branch ID: ${record.id || record.branchId || "-"}`,
+    `• Branch Name: ${record.name || record.branchName || "-"}`,
+    `• Branch Code: ${record.code || record.branchCode || "-"}`,
+    `• IFSC: ${record.ifsc || record.ifscCode || "-"}`,
+    `• Location: ${record.location || record.address || "-"}`,
+    `• Contact: ${record.contact || record.phone || "-"}`,
+    `• Email: ${record.email || "-"}`,
+    `• Manager: ${record.manager || record.managerName || "-"}`,
+    `• Employees: ${record.employees || record.totalEmployees || 0}`,
+    `• Accounts: ${record.accounts || record.totalAccounts || 0}`,
+    `• Status: ${record.status || "-"}`,
+  ].join("\n");
+}
+
+function formatLoan(record: BankRecord, index?: number) {
+  const prefix = typeof index === "number" ? `${index + 1}. ` : "";
+
+  return [
+    `${prefix}${record.loanType || record.type || "Loan"}`,
+    `   Loan ID: ${record.loanId || record.id || "-"}`,
+    `   Customer: ${record.customer || record.customerName || record.fullName || "-"}`,
+    `   Email: ${record.email || record.customerEmail || record.userEmail || "-"}`,
+    `   Account: ${record.accountNumber || "-"}`,
+    `   Amount: ${money(record.amount || record.loanAmount)}`,
+    `   Interest: ${record.interest || record.interestRate || "-"}`,
+    `   Tenure: ${record.tenure || record.tenureMonths || "-"}`,
+    `   EMI: ${record.emi ? money(record.emi) : "-"}`,
+    `   Paid: ${record.paid ? money(record.paid) : money(0)}`,
+    `   Pending: ${record.pending ? money(record.pending) : "-"}`,
+    `   Status: ${record.status || "-"}`,
+    `   Applied Date: ${record.appliedDate || record.createdAt || "-"}`,
+  ].join("\n");
+}
+
+function formatTransaction(record: BankRecord, index?: number) {
+  const prefix = typeof index === "number" ? `${index + 1}. ` : "";
+
+  return [
+    `${prefix}${record.transactionId || record.id || record.reference || "Transaction"}`,
+    `   Customer: ${record.customer || record.customerName || record.name || "-"}`,
+    `   Email: ${record.email || record.customerEmail || record.userEmail || "-"}`,
+    `   Account: ${record.accountNumber || "-"}`,
+    `   Type: ${record.type || record.transactionType || "-"}`,
+    `   Amount: ${money(record.amount)}`,
+    `   Category: ${record.category || "-"}`,
+    `   Date: ${record.date || record.createdAt || "-"}`,
+    `   Time: ${record.time || "-"}`,
+    `   Status: ${record.status || "-"}`,
+    `   AI Risk: ${record.risk || record.aiRisk || record.riskLevel || "Normal"}`,
+    `   Risk Score: ${record.riskScore || 0}`,
+    `   Reference: ${record.reference || record.referenceNo || "-"}`,
+    `   Description: ${record.description || record.notes || "-"}`,
+  ].join("\n");
+}
+
+function relatedToCustomer(record: BankRecord, customer: BankRecord) {
+  const customerEmail = cleanText(getEmail(customer));
+  const accountNumber = cleanText(getAccountNumber(customer));
+  const customerId = cleanText(getId(customer));
+  const customerName = cleanText(getCustomerName(customer));
+  const phone = cleanText(getPhone(customer));
+  const cif = cleanText(getCif(customer));
+
+  const recordEmail = cleanText(record.email || record.customerEmail || record.userEmail);
+  const recordAccount = cleanText(record.accountNumber || record.accountNo || record.account);
+  const recordCustomerId = cleanText(record.customerId || record.customerID || record.id);
+  const recordCustomerName = cleanText(
+    record.customer || record.customerName || record.fullName || record.name
+  );
+  const recordPhone = cleanText(record.phone || record.phoneNumber || record.mobile);
+  const recordCif = cleanText(record.cif || record.cifNumber);
+
+  return (
+    (!!customerEmail && recordEmail === customerEmail) ||
+    (!!accountNumber && recordAccount === accountNumber) ||
+    (!!customerId && recordCustomerId === customerId) ||
+    (!!customerName && recordCustomerName === customerName) ||
+    (!!phone && recordPhone === phone) ||
+    (!!cif && recordCif === cif)
+  );
+}
+
+function formatList(title: string, records: BankRecord[], formatter: Function, limit = 15) {
+  if (!records.length) return `${title}\nNo records found.`;
+
+  const selected = records.slice(0, limit);
+
+  const lines = selected.map((record, index) => formatter(record, index));
+
+  const extra =
+    records.length > limit
+      ? `\nShowing ${limit} of ${records.length} records. Ask more specific name/email/account number for full details.`
+      : "";
+
+  return [`${title} (${records.length})`, ...lines, extra].filter(Boolean).join("\n\n");
+}
+
+function calculateEmi(question: string) {
   const q = cleanText(question);
 
   if (!q.includes("emi") && !q.includes("interest")) return "";
@@ -217,9 +541,9 @@ function calculateEmi(question) {
       "Ask like this:",
       "Calculate EMI for 500000 loan at 12% for 5 years",
       "",
-      "EMI formula:",
+      "Formula:",
       "EMI = P × R × (1 + R)^N / ((1 + R)^N - 1)",
-      "P = loan amount, R = monthly interest rate, N = number of months.",
+      "P = principal, R = monthly interest rate, N = number of months.",
     ].join("\n");
   }
 
@@ -239,144 +563,156 @@ function calculateEmi(question) {
 
   return [
     "Loan EMI Calculation",
-    `• Principal: ${money(principal)}`,
-    `• Interest Rate: ${annualRate}% per year`,
-    `• Tenure: ${years} years`,
-    `• Monthly EMI: ${money(Math.round(emi))}`,
-    `• Total Interest: ${money(Math.round(totalInterest))}`,
-    `• Total Payment: ${money(Math.round(totalPayment))}`,
+    `Principal: ${money(principal)}`,
+    `Interest Rate: ${annualRate}% per year`,
+    `Tenure: ${years} years`,
+    `Monthly EMI: ${money(Math.round(emi))}`,
+    `Total Interest: ${money(Math.round(totalInterest))}`,
+    `Total Payment: ${money(Math.round(totalPayment))}`,
   ].join("\n");
 }
 
-function buildBankSummary(data) {
+function buildSummary(data: BankData) {
   const totalCustomerBalance = data.customers.reduce(
-    (sum, item) => sum + toNumber(item.balance),
+    (sum, item) => sum + numberValue(item.balance),
     0
   );
+
+  const totalIncome = data.transactions.reduce((sum, item) => {
+    const type = cleanText(item.type || item.transactionType);
+    return type.includes("income") || type.includes("credit") || type.includes("deposit")
+      ? sum + numberValue(item.amount)
+      : sum;
+  }, 0);
+
+  const totalExpense = data.transactions.reduce((sum, item) => {
+    const type = cleanText(item.type || item.transactionType);
+    return type.includes("expense") ||
+      type.includes("debit") ||
+      type.includes("transfer") ||
+      type.includes("withdraw")
+      ? sum + numberValue(item.amount)
+      : sum;
+  }, 0);
 
   const totalLoanAmount = data.loans.reduce(
-    (sum, item) => sum + toNumber(item.amount || item.loanAmount || item.totalLoans),
+    (sum, item) => sum + numberValue(item.amount || item.loanAmount),
     0
   );
 
+  const pendingLoans = data.loans.filter((item) =>
+    cleanText(item.status).includes("pending")
+  );
+
+  const highRiskTransactions = data.transactions.filter((item) => {
+    const risk = cleanText(item.risk || item.aiRisk || item.riskLevel);
+    const status = cleanText(item.status);
+    const score = numberValue(item.riskScore);
+
+    return (
+      risk.includes("high") ||
+      risk.includes("flag") ||
+      status.includes("failed") ||
+      status.includes("flag") ||
+      score >= 70
+    );
+  });
+
   return [
-    "FinSecure Bank Summary",
+    "FinSecure Live Bank Summary",
     `• Customers: ${data.customers.length}`,
     `• Employees: ${data.employees.length}`,
     `• Admins: ${data.admins.length}`,
     `• Branches: ${data.branches.length}`,
     `• Loans: ${data.loans.length}`,
+    `• Pending Loans: ${pendingLoans.length}`,
     `• Transactions: ${data.transactions.length}`,
     `• Audit Logs: ${data.auditLogs.length}`,
     `• Total Customer Balance: ${money(totalCustomerBalance)}`,
+    `• Transaction Income: ${money(totalIncome)}`,
+    `• Transaction Expense: ${money(totalExpense)}`,
     `• Total Loan Amount: ${money(totalLoanAmount)}`,
+    `• AI Risk Alerts: ${highRiskTransactions.length}`,
+    "",
+    "Ask examples:",
+    "• Show customer Prabhas complete details",
+    "• Show customer account number 99887744562 transactions",
+    "• Show all pending loans",
+    "• Show latest transactions",
+    "• Show employee Sri details",
+    "• Show branch Gajuwaka details",
   ].join("\n");
 }
 
-function answerQuestion(question, data, role) {
+function answerCustomerQuestion(question: string, data: BankData) {
   const q = cleanText(question);
-
-  const emiAnswer = calculateEmi(question);
-  if (emiAnswer) return emiAnswer;
-
-  if (
-    q.includes("summary") ||
-    q.includes("overview") ||
-    q.includes("bank details") ||
-    q.includes("everything") ||
-    q.includes("complete bank")
-  ) {
-    return buildBankSummary(data);
-  }
-
-  if (q.includes("employee") && (q.includes("how many") || q.includes("number") || q.includes("count"))) {
-    return `Total employees: ${data.employees.length}`;
-  }
-
-  if (q.includes("customer") && (q.includes("how many") || q.includes("number") || q.includes("count"))) {
-    return `Total customers: ${data.customers.length}`;
-  }
-
-  if (q.includes("admin") && (q.includes("how many") || q.includes("number") || q.includes("count"))) {
-    if (!isSuperAdmin(role)) return "You do not have permission to view admin database.";
-    return `Total admins: ${data.admins.length}`;
-  }
-
-  if (q.includes("branch") && (q.includes("how many") || q.includes("number") || q.includes("count"))) {
-    return `Total branches: ${data.branches.length}`;
-  }
-
-  if (q.includes("loan") && (q.includes("how many") || q.includes("number") || q.includes("count"))) {
-    return `Total loans: ${data.loans.length}`;
-  }
-
-  if (q.includes("transaction") && (q.includes("how many") || q.includes("number") || q.includes("count"))) {
-    return `Total transactions: ${data.transactions.length}`;
-  }
-
-  const customer = findByQuestion(question, data.customers, [
-    "name",
-    "customerName",
-    "email",
-    "phone",
-    "phoneNumber",
-    "accountNumber",
-    "cif",
-    "cifNumber",
-    "customerId",
-    "id",
-  ]);
+  const customer = findRecord(question, data.customers);
 
   if (customer) {
-    const accountNumber = cleanText(customer.accountNumber);
-    const email = cleanText(customer.email);
+    const customerTransactions = data.transactions.filter((item) =>
+      relatedToCustomer(item, customer)
+    );
 
-    const customerTransactions = data.transactions.filter((item) => {
-      return (
-        cleanText(item.accountNumber) === accountNumber ||
-        cleanText(item.email) === email ||
-        cleanText(item.customerEmail) === email
-      );
-    });
+    const customerLoans = data.loans.filter((item) => relatedToCustomer(item, customer));
 
-    const customerLoans = data.loans.filter((item) => {
-      return (
-        cleanText(item.accountNumber) === accountNumber ||
-        cleanText(item.email) === email ||
-        cleanText(item.customerEmail) === email
+    if (q.includes("transaction")) {
+      return formatList(
+        `Transactions for ${getCustomerName(customer) || getEmail(customer)}`,
+        customerTransactions,
+        formatTransaction,
+        20
       );
-    });
+    }
+
+    if (q.includes("loan")) {
+      return formatList(
+        `Loans for ${getCustomerName(customer) || getEmail(customer)}`,
+        customerLoans,
+        formatLoan,
+        20
+      );
+    }
 
     return [
-      formatRecord("Customer Details", customer),
+      formatCustomer(customer),
       "",
-      `Transactions Found: ${customerTransactions.length}`,
-      `Loans Found: ${customerLoans.length}`,
+      formatList("Customer Transactions", customerTransactions, formatTransaction, 10),
+      "",
+      formatList("Customer Loans", customerLoans, formatLoan, 10),
     ].join("\n");
   }
 
-  const employee = findByQuestion(question, data.employees, [
-    "name",
-    "employeeName",
-    "email",
-    "phone",
-    "phoneNumber",
-    "employeeId",
-    "id",
-  ]);
-
-  if (employee) {
-    return formatRecord("Employee Details", employee);
+  if (
+    q.includes("all customer") ||
+    q.includes("customers list") ||
+    q.includes("every customer")
+  ) {
+    return formatList("All Customers", data.customers, formatCustomer, 20);
   }
 
-  const branch = findByQuestion(question, data.branches, [
-    "name",
-    "branchName",
-    "ifsc",
-    "ifscCode",
-    "branchId",
-    "id",
-  ]);
+  return "";
+}
+
+function answerEmployeeQuestion(question: string, data: BankData) {
+  const q = cleanText(question);
+  const employee = findRecord(question, data.employees);
+
+  if (employee) return formatEmployee(employee);
+
+  if (
+    q.includes("all employee") ||
+    q.includes("employees list") ||
+    q.includes("every employee")
+  ) {
+    return formatList("All Employees", data.employees, formatEmployee, 20);
+  }
+
+  return "";
+}
+
+function answerBranchQuestion(question: string, data: BankData) {
+  const q = cleanText(question);
+  const branch = findRecord(question, data.branches);
 
   if (branch) {
     const branchName = cleanText(branch.name || branch.branchName);
@@ -396,62 +732,344 @@ function answerQuestion(question, data, role) {
       );
     });
 
+    const branchLoans = data.loans.filter((item) => {
+      return (
+        cleanText(item.branch || item.branchName) === branchName ||
+        cleanText(item.ifsc || item.ifscCode) === branchIfsc
+      );
+    });
+
+    const branchTransactions = data.transactions.filter((item) => {
+      return (
+        cleanText(item.branch || item.branchName) === branchName ||
+        cleanText(item.ifsc || item.ifscCode) === branchIfsc
+      );
+    });
+
     return [
-      formatRecord("Branch Details", branch),
+      formatBranch(branch),
       "",
       `Branch Customers: ${branchCustomers.length}`,
       `Branch Employees: ${branchEmployees.length}`,
+      `Branch Loans: ${branchLoans.length}`,
+      `Branch Transactions: ${branchTransactions.length}`,
+      "",
+      formatList("Latest Branch Transactions", branchTransactions, formatTransaction, 5),
     ].join("\n");
   }
 
-  if (q.includes("loan")) {
-    const pending = data.loans.filter((item) => cleanText(item.status).includes("pending"));
-    const approved = data.loans.filter((item) => cleanText(item.status).includes("approved"));
-    const rejected = data.loans.filter((item) => cleanText(item.status).includes("rejected"));
-
-    return [
-      "Loan Summary",
-      `• Total Loans: ${data.loans.length}`,
-      `• Pending Loans: ${pending.length}`,
-      `• Approved Loans: ${approved.length}`,
-      `• Rejected Loans: ${rejected.length}`,
-      "Ask with customer name or account number to get customer loan details.",
-    ].join("\n");
+  if (
+    q.includes("all branch") ||
+    q.includes("branches list") ||
+    q.includes("every branch")
+  ) {
+    return formatList("All Branches", data.branches, formatBranch, 20);
   }
 
-  if (q.includes("audit")) {
-    if (!isSuperAdmin(role)) return "Only Super Admin can view audit logs.";
+  return "";
+}
 
-    const latest = data.auditLogs.slice(-5).reverse();
+function answerLoanQuestion(question: string, data: BankData) {
+  const q = cleanText(question);
 
-    if (latest.length === 0) return "No audit logs found.";
-
-    return [
-      "Latest Audit Logs",
-      ...latest.map((log, index) => {
-        return `${index + 1}. ${log.action || "-"} | ${log.module || "-"} | ${
-          log.adminName || log.admin || "-"
-        } | ${log.createdAt || log.date || "-"}`;
-      }),
-    ].join("\n");
+  const customer = findRecord(question, data.customers);
+  if (customer) {
+    const customerLoans = data.loans.filter((item) => relatedToCustomer(item, customer));
+    return formatList(
+      `Loans for ${getCustomerName(customer) || getEmail(customer)}`,
+      customerLoans,
+      formatLoan,
+      20
+    );
   }
+
+  const loan = findRecord(question, data.loans);
+  if (loan) return formatLoan(loan);
+
+  let loans = data.loans;
+
+  if (q.includes("pending")) {
+    loans = loans.filter((item) => cleanText(item.status).includes("pending"));
+    return formatList("Pending Loans", loans, formatLoan, 20);
+  }
+
+  if (q.includes("approved")) {
+    loans = loans.filter((item) => cleanText(item.status).includes("approved"));
+    return formatList("Approved Loans", loans, formatLoan, 20);
+  }
+
+  if (q.includes("rejected")) {
+    loans = loans.filter((item) => cleanText(item.status).includes("rejected"));
+    return formatList("Rejected Loans", loans, formatLoan, 20);
+  }
+
+  if (
+    q.includes("all loan") ||
+    q.includes("loan list") ||
+    q.includes("every loan") ||
+    q.includes("loans")
+  ) {
+    return formatList("All Loans", loans, formatLoan, 20);
+  }
+
+  return "";
+}
+
+function answerTransactionQuestion(question: string, data: BankData) {
+  const q = cleanText(question);
+
+  const customer = findRecord(question, data.customers);
+  if (customer) {
+    const customerTransactions = data.transactions.filter((item) =>
+      relatedToCustomer(item, customer)
+    );
+
+    return formatList(
+      `Transactions for ${getCustomerName(customer) || getEmail(customer)}`,
+      customerTransactions,
+      formatTransaction,
+      25
+    );
+  }
+
+  const transaction = findRecord(question, data.transactions);
+  if (transaction) return formatTransaction(transaction);
+
+  let transactions = data.transactions;
+
+  if (q.includes("failed")) {
+    transactions = transactions.filter((item) =>
+      cleanText(item.status).includes("failed")
+    );
+    return formatList("Failed Transactions", transactions, formatTransaction, 25);
+  }
+
+  if (q.includes("success")) {
+    transactions = transactions.filter((item) =>
+      cleanText(item.status).includes("success")
+    );
+    return formatList("Successful Transactions", transactions, formatTransaction, 25);
+  }
+
+  if (q.includes("high risk") || q.includes("risky") || q.includes("flagged")) {
+    transactions = transactions.filter((item) => {
+      const risk = cleanText(item.risk || item.aiRisk || item.riskLevel);
+      const status = cleanText(item.status);
+      const score = numberValue(item.riskScore);
+
+      return (
+        risk.includes("high") ||
+        risk.includes("flag") ||
+        status.includes("flag") ||
+        score >= 70
+      );
+    });
+
+    return formatList("Risky / Flagged Transactions", transactions, formatTransaction, 25);
+  }
+
+  if (
+    q.includes("latest") ||
+    q.includes("recent") ||
+    q.includes("all transaction") ||
+    q.includes("transaction list") ||
+    q.includes("every transaction") ||
+    q.includes("transactions")
+  ) {
+    return formatList("Latest Transactions", transactions, formatTransaction, 25);
+  }
+
+  return "";
+}
+
+function answerAdminQuestion(question: string, data: BankData, role: string) {
+  const q = cleanText(question);
+
+  if (!q.includes("admin")) return "";
+
+  if (!isSuperAdmin(role)) {
+    return "Only Super Admin can view admin database details.";
+  }
+
+  const admin = findRecord(question, data.admins);
+
+  if (admin) return formatRecord("Admin Complete Details", admin);
+
+  if (
+    q.includes("all admin") ||
+    q.includes("admins list") ||
+    q.includes("every admin")
+  ) {
+    return formatList(
+      "All Admins",
+      data.admins,
+      (record: BankRecord, index: number) => formatRecord(`${index + 1}. Admin`, record),
+      20
+    );
+  }
+
+  return "";
+}
+
+function answerAuditQuestion(data: BankData, role: string) {
+  if (!isSuperAdmin(role)) {
+    return "Only Super Admin can view audit log details.";
+  }
+
+  const latestLogs = data.auditLogs.slice(0, 25);
+
+  if (!latestLogs.length) return "No audit logs found.";
 
   return [
-    "I can answer bank/admin questions like:",
-    "• How many employees do we have?",
-    "• How many customers do we have?",
-    "• Show customer Teja full details",
-    "• Show employee Sri details",
-    "• Show branch Gajuwaka details",
-    "• Show complete bank summary",
-    "• How many loans are pending?",
-    "• Calculate EMI for 500000 loan at 12% for 5 years",
+    `Latest Audit Logs (${data.auditLogs.length})`,
+    ...latestLogs.map((log, index) => {
+      return `${index + 1}. ${log.action || "-"} | ${log.module || "-"} | ${
+        log.adminName || log.admin || log.user || "-"
+      } | ${log.createdAt || log.date || "-"}`;
+    }),
   ].join("\n");
 }
 
-router.post("/chat", async (req, res) => {
+function answerQuestion(question: string, data: BankData, role: string) {
+  const q = cleanText(question);
+
+  const emiAnswer = calculateEmi(question);
+  if (emiAnswer) return emiAnswer;
+
+  if (
+    q.includes("summary") ||
+    q.includes("overview") ||
+    q.includes("everything") ||
+    q.includes("complete bank") ||
+    q.includes("bank details") ||
+    q.includes("bank status") ||
+    q.includes("what data") ||
+    q.includes("all data")
+  ) {
+    return buildSummary(data);
+  }
+
+  if (
+    q.includes("how many customer") ||
+    q.includes("customers count") ||
+    q.includes("total customers")
+  ) {
+    return `Total customers: ${data.customers.length}`;
+  }
+
+  if (
+    q.includes("how many employee") ||
+    q.includes("employees count") ||
+    q.includes("total employees")
+  ) {
+    return `Total employees: ${data.employees.length}`;
+  }
+
+  if (
+    q.includes("how many admin") ||
+    q.includes("admins count") ||
+    q.includes("total admins")
+  ) {
+    if (!isSuperAdmin(role)) {
+      return "Only Super Admin can view admin count.";
+    }
+
+    return `Total admins: ${data.admins.length}`;
+  }
+
+  if (
+    q.includes("how many branch") ||
+    q.includes("branches count") ||
+    q.includes("total branches")
+  ) {
+    return `Total branches: ${data.branches.length}`;
+  }
+
+  if (
+    q.includes("how many transaction") ||
+    q.includes("transactions count") ||
+    q.includes("total transactions")
+  ) {
+    return `Total transactions: ${data.transactions.length}`;
+  }
+
+  if (
+    q.includes("how many loan") ||
+    q.includes("loans count") ||
+    q.includes("total loans")
+  ) {
+    return `Total loans: ${data.loans.length}`;
+  }
+
+  if (q.includes("audit") || q.includes("log")) {
+    return answerAuditQuestion(data, role);
+  }
+
+  const adminAnswer = answerAdminQuestion(question, data, role);
+  if (adminAnswer) return adminAnswer;
+
+  if (q.includes("customer") || q.includes("account") || q.includes("cif")) {
+    const answer = answerCustomerQuestion(question, data);
+    if (answer) return answer;
+  }
+
+  if (q.includes("employee") || q.includes("staff")) {
+    const answer = answerEmployeeQuestion(question, data);
+    if (answer) return answer;
+  }
+
+  if (q.includes("branch") || q.includes("ifsc")) {
+    const answer = answerBranchQuestion(question, data);
+    if (answer) return answer;
+  }
+
+  if (q.includes("loan") || q.includes("emi")) {
+    const answer = answerLoanQuestion(question, data);
+    if (answer) return answer;
+  }
+
+  if (q.includes("transaction") || q.includes("transfer") || q.includes("payment")) {
+    const answer = answerTransactionQuestion(question, data);
+    if (answer) return answer;
+  }
+
+  const genericCustomer = findRecord(question, data.customers);
+  if (genericCustomer) {
+    return answerCustomerQuestion(question, data);
+  }
+
+  const genericEmployee = findRecord(question, data.employees);
+  if (genericEmployee) {
+    return formatEmployee(genericEmployee);
+  }
+
+  const genericBranch = findRecord(question, data.branches);
+  if (genericBranch) {
+    return answerBranchQuestion(question, data);
+  }
+
+  return [
+    "I can answer live bank/admin questions like:",
+    "• Total customers",
+    "• Show customer Prabhas complete details",
+    "• Show customer Prabhas transactions",
+    "• Show customer account number 99887744562 details",
+    "• Show employee Sri details",
+    "• Show branch Gajuwaka details",
+    "• Show all pending loans",
+    "• Show latest transactions",
+    "• Show failed transactions",
+    "• Show risky transactions",
+    "• Calculate EMI for 500000 loan at 12% for 5 years",
+    "• Show complete bank summary",
+    "",
+    "I do not show passwords, tokens, OTPs, or secret keys.",
+  ].join("\n");
+}
+
+router.post("/chat", async (req: Request, res: Response) => {
   try {
-    const authUser = getUserFromToken(req);
+    const authUser = getAuthUser(req);
 
     if (!authUser) {
       return res.status(401).json({
@@ -469,48 +1087,54 @@ router.post("/chat", async (req, res) => {
       });
     }
 
-    const admins = await loadCollection("admins");
+    const admins = await getCollection("admins");
 
     const adminProfile =
       admins.find((admin) => {
         return (
           cleanText(admin.email) === cleanText(authUser.email) ||
-          cleanText(admin.id) === cleanText(authUser.id) ||
-          cleanText(admin._id) === cleanText(authUser.id)
+          cleanText(admin.id) === cleanText(authUser.id)
         );
       }) || authUser;
 
-    const role = adminProfile.role || authUser.role || req.body?.role || "Admin";
+    const role = String(adminProfile.role || authUser.role || "Admin");
 
-    const rawData = {
-      customers: canAccess(role, "customers") ? await loadCollection("customers") : [],
-      employees: canAccess(role, "employees") ? await loadCollection("employees") : [],
+    const data: BankData = {
+      customers: roleCanAccess(role, "customers")
+        ? filterByBranch(await getCollection("customers"), adminProfile, role)
+        : [],
+
+      employees: roleCanAccess(role, "employees")
+        ? filterByBranch(await getCollection("employees"), adminProfile, role)
+        : [],
+
       admins: isSuperAdmin(role) ? admins : [],
-      branches: canAccess(role, "branches") ? await loadCollection("branches") : [],
-      loans: canAccess(role, "loans") ? await loadCollection("loans") : [],
-      transactions: canAccess(role, "transactions") ? await loadCollection("transactions") : [],
-      auditLogs: isSuperAdmin(role) ? await loadCollection("auditLogs") : [],
-    };
 
-    const data = {
-      customers: filterByBranch(rawData.customers, adminProfile, role),
-      employees: filterByBranch(rawData.employees, adminProfile, role),
-      admins: rawData.admins,
-      branches: filterByBranch(rawData.branches, adminProfile, role),
-      loans: filterByBranch(rawData.loans, adminProfile, role),
-      transactions: filterByBranch(rawData.transactions, adminProfile, role),
-      auditLogs: rawData.auditLogs,
+      branches: roleCanAccess(role, "branches")
+        ? filterByBranch(await getCollection("branches"), adminProfile, role)
+        : [],
+
+      loans: roleCanAccess(role, "loans")
+        ? filterByBranch(await getCollection("loans"), adminProfile, role)
+        : [],
+
+      transactions: roleCanAccess(role, "transactions")
+        ? filterByBranch(await getCollection("transactions"), adminProfile, role)
+        : [],
+
+      auditLogs: isSuperAdmin(role) ? await getCollection("auditLogs") : [],
     };
 
     const answer = answerQuestion(question, data, role);
 
-    return res.status(200).json({
+    return res.json({
       success: true,
       role,
       answer,
+      reply: answer,
     });
-  } catch (error) {
-    console.error("Admin AI route error:", error);
+  } catch (error: any) {
+    console.error("Admin AI error:", error);
 
     return res.status(500).json({
       success: false,
@@ -519,4 +1143,4 @@ router.post("/chat", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
