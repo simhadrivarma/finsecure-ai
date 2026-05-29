@@ -17,21 +17,29 @@ const normalizeRole = (role = "") => {
 const isAdminRole = (role = "") => {
   const normalizedRole = normalizeRole(role);
 
-  return [
+  const adminRoles = [
     "admin",
     "super",
     "super admin",
     "superadmin",
+    "super administrator",
     "branch manager",
     "manager",
     "staff",
     "cashier",
     "loan officer",
+    "loan manager",
+    "customer support",
     "customer support executive",
+    "support executive",
     "relationship manager",
     "admin officer",
     "fraud analyst",
-  ].includes(normalizedRole);
+    "report analyst",
+    "reports analyst",
+  ];
+
+  return adminRoles.includes(normalizedRole);
 };
 
 const isCustomerRole = (role = "") => {
@@ -727,8 +735,8 @@ export default function App() {
         </div>
 
         <p style={styles.footerText}>
-          Admin, Super Admin, Branch Manager and Staff users will go to Admin
-          Portal. Customer users will go to Customer Dashboard automatically.
+          Admin, Super Admin, Branch Manager, Loan Officer, Customer Support
+          and Staff users will go to Admin Portal. Customer users will go to Customer Dashboard automatically.
         </p>
       </div>
     </div>
