@@ -354,9 +354,11 @@ const validateAdminBranchAccessForPayload = async (req: any, payload: any) => {
 
   if (!accessFilter || Object.keys(accessFilter).length === 0) return "";
 
-  if (accessFilter.id === "__NO_ACCESS__") {
-    return "Your admin account has no branch assigned. Please contact Super Admin.";
-  }
+  const accessFilterAny: any = accessFilter;
+
+if (accessFilterAny.id === "__NO_ACCESS__") {
+  return "Your admin account has no branch assigned. Please contact Super Admin.";
+}
 
   const checks: any[] = [];
 
