@@ -935,6 +935,83 @@ const createCrudRoutes = (
         }
       }
 
+            if (entity === "admin" || collectionName === "admins") {
+        const employeeId = String(payload.employeeId || "").trim();
+
+        if (!employeeId) {
+          return res.status(400).json({
+            success: false,
+            message: "Employee ID is required to create an admin.",
+          });
+        }
+
+        const employeeCollection = await getCollection("employees");
+
+        const employee = await employeeCollection.findOne({
+          $or: [
+            { id: employeeId },
+            { employeeId: employeeId },
+            { employeeID: employeeId },
+          ],
+        });
+
+        if (!employee) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid Employee ID. Please enter a valid employee ID from Employee Management.",
+          });
+        }
+
+        const existingAdminForEmployee = await collection.findOne({
+          $or: [
+            { employeeId: employeeId },
+            { employeeID: employeeId },
+            { employeeId: employee.employeeId },
+            { employeeId: employee.id },
+          ],
+        });
+
+        if (existingAdminForEmployee) {
+          return res.status(409).json({
+            success: false,
+            message: "This employee already has an admin account.",
+          });
+        }
+
+        const employeeBranch =
+          employee.branch ||
+          employee.branchName ||
+          employee.assignedBranch ||
+          "";
+
+        const employeeIfsc =
+          employee.ifsc || employee.ifscCode || employee.IFSC || "";
+
+        if (!employeeBranch) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "This employee does not have a branch assigned. Please update employee details first.",
+          });
+        }
+
+        if (!employeeIfsc) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "This employee does not have an IFSC code assigned. Please update employee details first.",
+          });
+        }
+
+        payload.employeeId = employee.employeeId || employee.id || employeeId;
+        payload.employeeName = employee.name || employee.employeeName || "";
+        payload.branch = employeeBranch;
+        payload.branchName = employeeBranch;
+        payload.ifsc = employeeIfsc;
+        payload.ifscCode = employeeIfsc;
+      }
+
       const inserted = await collection.insertOne(payload);
 
       const created = await collection.findOne({
