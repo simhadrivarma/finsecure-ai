@@ -1069,14 +1069,25 @@ const createCrudRoutes = (
 };
 
 createCrudRoutes("/api/admins", "admin", "admins");
-createCrudRoutes("/api/employees", "employee", "employees");
-createCrudRoutes("/api/branches", "branch", "branches");
-createCrudRoutes("/api/customers", "customer", "customers");
-createCrudRoutes("/api/loans", "loan", "loans");
-createCrudRoutes("/api/admin-transactions", "transaction", "admintransactions");
+
+const secureEmployeeRoutes = require("./routes/employeeRoutes");
+const secureBranchRoutes = require("./routes/branchRoutes");
+const secureCustomerRoutes = require("./routes/customerRoutes");
+const secureLoanRoutes = require("./routes/loanRoutes");
+const secureAdminTransactionRoutes = require("./routes/adminTransactionRoutes");
+
+app.use("/api/employees", secureEmployeeRoutes.default || secureEmployeeRoutes);
+app.use("/api/branches", secureBranchRoutes.default || secureBranchRoutes);
+app.use("/api/customers", secureCustomerRoutes.default || secureCustomerRoutes);
+app.use("/api/loans", secureLoanRoutes.default || secureLoanRoutes);
+app.use(
+  "/api/admin-transactions",
+  secureAdminTransactionRoutes.default || secureAdminTransactionRoutes
+);
+
+// Keep this for customer dashboard income/expense transactions for now.
+// Do not replace this yet, otherwise customer dashboard may stop saving transactions.
 createCrudRoutes("/api/transactions", "transaction", "admintransactions");
-createCrudRoutes("/api/reports", "report", "reports");
-createCrudRoutes("/api/audit-logs", "auditLog", "auditlogs");
 
 /* ===============================
    DASHBOARD ROUTE
