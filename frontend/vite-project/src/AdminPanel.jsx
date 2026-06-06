@@ -423,7 +423,7 @@ const configs = {
       },
       { name: "ifsc", label: "IFSC Code", required: true },
       { name: "cif", label: "CIF Number", required: true },
-      { name: "balance", label: "Balance", defaultValue: "₹0" },
+      { name: "balance", label: "Balance", type: "number", defaultValue: "₹0" },
       { name: "branch", label: "Branch", required: true },
       {
   name: "branch",
@@ -1199,10 +1199,15 @@ const handleEmployeeIdChange = (value) => {
     }
 
     ["amount", "balance", "emi", "paid", "pending", "loans"].forEach((key) => {
-      if (cleanedForm[key] !== undefined && cleanedForm[key] !== "") {
-        cleanedForm[key] = normalizeMoney(cleanedForm[key]);
-      }
-    });
+  if (cleanedForm[key] !== undefined && cleanedForm[key] !== "") {
+    cleanedForm[key] = Number(
+      String(cleanedForm[key])
+        .replace(/₹/g, "")
+        .replace(/,/g, "")
+        .trim()
+    );
+  }
+});
 
     if (cleanedForm.ifsc) {
       cleanedForm.ifsc = String(cleanedForm.ifsc).toUpperCase().trim();
