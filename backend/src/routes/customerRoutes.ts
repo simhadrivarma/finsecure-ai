@@ -15,7 +15,7 @@ try {
   Loan = null;
 }
 
-console.log("✅ SECURE FINSECURE CUSTOMER ROUTES LOADED");
+console.log("✅ SECURE FINSECURE CUSTOMER ROUTES V5 LOADED");
 
 const router = express.Router();
 
@@ -35,6 +35,7 @@ const normalizeRole = (role: any) => {
 
 const isSuperAdmin = (role: any) => {
   const cleanRole = normalizeRole(role);
+
   return (
     cleanRole === "super admin" ||
     cleanRole === "superadmin" ||
@@ -44,11 +45,13 @@ const isSuperAdmin = (role: any) => {
 
 const isFullAdmin = (role: any) => {
   const cleanRole = normalizeRole(role);
+
   return isSuperAdmin(cleanRole) || cleanRole === "admin";
 };
 
 const isLoanRole = (role: any) => {
   const cleanRole = normalizeRole(role);
+
   return cleanRole === "loan officer" || cleanRole === "loan manager";
 };
 
@@ -65,26 +68,30 @@ const canWriteCustomer = (role: any) => {
   ].includes(cleanRole);
 };
 
-const cleanMoney = (value: any) => {
-  const clean = String(value || "")
-    .replace(/₹/g, "")
-    .replace(/,/g, "")
-    .trim();
-
-  if (clean === "") return "₹0";
-
-  const numberValue = Number(clean);
-
-  if (Number.isNaN(numberValue)) {
-    return value;
+const cleanMoney = (value: unknown): number => {
+  if (value === undefined || value === null || value === "") {
+    return 0;
   }
 
-  return `₹${numberValue.toLocaleString("en-IN")}`;
+  const cleanedValue = String(value)
+    .replace(/₹/g, "")
+    .replace(/,/g, "")
+    .replace(/\+/g, "")
+    .trim();
+
+  if (!cleanedValue) {
+    return 0;
+  }
+
+  const numberValue = Number(cleanedValue);
+
+  return Number.isFinite(numberValue) ? numberValue : 0;
 };
 
 const getErrorMessage = (error: any) => {
   if (error?.name === "ValidationError") {
     const firstError = Object.values(error.errors || {})[0] as any;
+
     return firstError?.message || "Validation failed";
   }
 
@@ -198,7 +205,9 @@ const normalizeCustomerPayload = (body: any) => {
   }
 
   if (payload.email !== undefined) {
-    payload.email = String(payload.email || "").toLowerCase().trim();
+    payload.email = String(payload.email || "")
+      .toLowerCase()
+      .trim();
   }
 
   if (payload.phone !== undefined) {
@@ -206,21 +215,24 @@ const normalizeCustomerPayload = (body: any) => {
   }
 
   if (payload.accountNumber !== undefined) {
-    payload.accountNumber = String(payload.accountNumber || "").replace(
-      /\D/g,
-      ""
-    );
+    payload.accountNumber = String(
+      payload.accountNumber || ""
+    ).replace(/\D/g, "");
   }
 
   if (payload.ifsc !== undefined) {
-    payload.ifsc = String(payload.ifsc || "").toUpperCase().trim();
+    payload.ifsc = String(payload.ifsc || "")
+      .toUpperCase()
+      .trim();
   }
 
   if (payload.cif !== undefined) {
-    payload.cif = String(payload.cif || "").toUpperCase().trim();
+    payload.cif = String(payload.cif || "")
+      .toUpperCase()
+      .trim();
   }
 
-  if (payload.balance !== undefined) {
+  if (payload.balance !== undefined && payload.balance !== null) {
     payload.balance = cleanMoney(payload.balance);
   }
 
@@ -240,9 +252,14 @@ const noAccessFilter = () => {
 };
 
 const sanitizeAccessFilter = (filter: any) => {
-  if (!filter || Object.keys(filter).length === 0) return {};
+  if (!filter || Object.keys(filter).length === 0) {
+    return {};
+  }
 
-  if (filter._id === "__NO_ACCESS__") {
+  if (
+    filter.id === "__NO_ACCESS__" ||
+    filter._id === "__NO_ACCESS__"
+  ) {
     return noAccessFilter();
   }
 
@@ -253,8 +270,13 @@ const mergeFilters = (baseFilter: any, accessFilter: any) => {
   const cleanBase = baseFilter || {};
   const cleanAccess = sanitizeAccessFilter(accessFilter || {});
 
-  if (Object.keys(cleanBase).length === 0) return cleanAccess;
-  if (Object.keys(cleanAccess).length === 0) return cleanBase;
+  if (Object.keys(cleanBase).length === 0) {
+    return cleanAccess;
+  }
+
+  if (Object.keys(cleanAccess).length === 0) {
+    return cleanBase;
+  }
 
   return {
     $and: [cleanBase, cleanAccess],
@@ -274,36 +296,59 @@ const getAdminBranchValues = (admin: any) => {
 };
 
 const getAdminIfscValues = (admin: any) => {
-  return [admin?.ifsc, admin?.ifscCode, admin?.IFSC]
+  return [
+    admin?.ifsc,
+    admin?.ifscCode,
+    admin?.IFSC,
+  ]
     .filter(Boolean)
     .map(normalizeText);
 };
 
-const validateAdminBranchAccessForPayload = (req: any, payload: any) => {
+const validateAdminBranchAccessForPayload = (
+  req: any,
+  payload: any
+) => {
   const role = req.admin?.role;
 
-  if (isFullAdmin(role)) return "";
+  if (isFullAdmin(role)) {
+    return "";
+  }
 
   const adminBranches = getAdminBranchValues(req.admin);
   const adminIfscList = getAdminIfscValues(req.admin);
 
   const customerBranch = normalizeText(
-    payload.branch || payload.branchName || payload.assignedBranch
+    payload.branch ||
+      payload.branchName ||
+      payload.assignedBranch
   );
 
-  const customerIfsc = normalizeText(payload.ifsc || payload.ifscCode || payload.IFSC);
+  const customerIfsc = normalizeText(
+    payload.ifsc ||
+      payload.ifscCode ||
+      payload.IFSC
+  );
 
   if (!adminBranches.length && !adminIfscList.length) {
     return "Your admin account has no branch assigned. Please contact Super Admin.";
   }
 
   const branchMatches =
-    customerBranch && adminBranches.some((branch: string) => branch === customerBranch);
+    customerBranch &&
+    adminBranches.some(
+      (branch: string) => branch === customerBranch
+    );
 
   const ifscMatches =
-    customerIfsc && adminIfscList.some((ifsc: string) => ifsc === customerIfsc);
+    customerIfsc &&
+    adminIfscList.some(
+      (ifsc: string) => ifsc === customerIfsc
+    );
 
-  if (branchMatches || ifscMatches) return "";
+  if (branchMatches || ifscMatches) {
+    return "";
+  }
 
   return "Access denied. You can manage customers only for your assigned branch.";
 };
@@ -333,10 +378,20 @@ const buildQueryFilter = (query: any) => {
   }
 
   if (query.search || query.q) {
-    const search = String(query.search || query.q || "").trim();
+    const search = String(
+      query.search ||
+        query.q ||
+        ""
+    ).trim();
 
     if (search) {
-      const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      const regex = new RegExp(
+        search.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        ),
+        "i"
+      );
 
       const searchOr = [
         { id: regex },
@@ -350,7 +405,11 @@ const buildQueryFilter = (query: any) => {
       ];
 
       if (filter.$or) {
-        filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
+        filter.$and = [
+          { $or: filter.$or },
+          { $or: searchOr },
+        ];
+
         delete filter.$or;
       } else {
         filter.$or = searchOr;
@@ -370,7 +429,9 @@ const getCustomerAccessFilter = async (req: any) => {
     }
 
     const loanAccessFilter = req.getAccessFilter
-      ? sanitizeAccessFilter(req.getAccessFilter("loans"))
+      ? sanitizeAccessFilter(
+          req.getAccessFilter("loans")
+        )
       : {};
 
     const loans = await Loan.find(loanAccessFilter)
@@ -394,96 +455,195 @@ const getCustomerAccessFilter = async (req: any) => {
         loan.customerId,
         loan.customerID,
         loan.id,
-      ].forEach((value) => value && ids.add(String(value)));
+      ].forEach((value) => {
+        if (value) {
+          ids.add(String(value));
+        }
+      });
 
       [
         loan.email,
         loan.customerEmail,
         loan.userEmail,
-      ].forEach((value) => value && emails.add(String(value).toLowerCase()));
+      ].forEach((value) => {
+        if (value) {
+          emails.add(
+            String(value).toLowerCase()
+          );
+        }
+      });
 
       [
         loan.accountNumber,
         loan.accountNo,
-      ].forEach((value) => value && accounts.add(String(value)));
+      ].forEach((value) => {
+        if (value) {
+          accounts.add(String(value));
+        }
+      });
 
       [
         loan.phone,
         loan.phoneNumber,
-      ].forEach((value) => value && phones.add(String(value)));
+      ].forEach((value) => {
+        if (value) {
+          phones.add(String(value));
+        }
+      });
 
       [
         loan.cif,
         loan.cifNumber,
-      ].forEach((value) => value && cifs.add(String(value).toUpperCase()));
+      ].forEach((value) => {
+        if (value) {
+          cifs.add(
+            String(value).toUpperCase()
+          );
+        }
+      });
     });
 
     const orConditions: any[] = [];
 
     if (ids.size) {
-      orConditions.push({ id: { $in: Array.from(ids) } });
-      orConditions.push({ customerId: { $in: Array.from(ids) } });
+      orConditions.push({
+        id: {
+          $in: Array.from(ids),
+        },
+      });
+
+      orConditions.push({
+        customerId: {
+          $in: Array.from(ids),
+        },
+      });
     }
 
     if (emails.size) {
-      orConditions.push({ email: { $in: Array.from(emails) } });
-      orConditions.push({ customerEmail: { $in: Array.from(emails) } });
-      orConditions.push({ userEmail: { $in: Array.from(emails) } });
+      orConditions.push({
+        email: {
+          $in: Array.from(emails),
+        },
+      });
+
+      orConditions.push({
+        customerEmail: {
+          $in: Array.from(emails),
+        },
+      });
+
+      orConditions.push({
+        userEmail: {
+          $in: Array.from(emails),
+        },
+      });
     }
 
     if (accounts.size) {
-      orConditions.push({ accountNumber: { $in: Array.from(accounts) } });
-      orConditions.push({ accountNo: { $in: Array.from(accounts) } });
+      orConditions.push({
+        accountNumber: {
+          $in: Array.from(accounts),
+        },
+      });
+
+      orConditions.push({
+        accountNo: {
+          $in: Array.from(accounts),
+        },
+      });
     }
 
     if (phones.size) {
-      orConditions.push({ phone: { $in: Array.from(phones) } });
-      orConditions.push({ phoneNumber: { $in: Array.from(phones) } });
+      orConditions.push({
+        phone: {
+          $in: Array.from(phones),
+        },
+      });
+
+      orConditions.push({
+        phoneNumber: {
+          $in: Array.from(phones),
+        },
+      });
     }
 
     if (cifs.size) {
-      orConditions.push({ cif: { $in: Array.from(cifs) } });
-      orConditions.push({ cifNumber: { $in: Array.from(cifs) } });
+      orConditions.push({
+        cif: {
+          $in: Array.from(cifs),
+        },
+      });
+
+      orConditions.push({
+        cifNumber: {
+          $in: Array.from(cifs),
+        },
+      });
     }
 
     if (!orConditions.length) {
       return noAccessFilter();
     }
 
-    return { $or: orConditions };
+    return {
+      $or: orConditions,
+    };
   }
 
   if (req.getAccessFilter) {
-    return sanitizeAccessFilter(req.getAccessFilter("customers"));
+    return sanitizeAccessFilter(
+      req.getAccessFilter("customers")
+    );
   }
 
   return {};
 };
 
-const findAccessibleCustomerById = async (req: any, id: string) => {
-  const accessFilter = await getCustomerAccessFilter(req);
+const findAccessibleCustomerById = async (
+  req: any,
+  id: string
+) => {
+  const accessFilter =
+    await getCustomerAccessFilter(req);
+
   const finalFilter = mergeFilters(
     {
-      $or: [{ id }, { customerId: id }, { accountNumber: id }, { email: id }],
+      $or: [
+        { id },
+        { customerId: id },
+        { accountNumber: id },
+        { email: id },
+      ],
     },
     accessFilter
   );
 
-  return Customer.findOne(finalFilter).select("-_id -__v -password").lean();
+  return Customer.findOne(finalFilter)
+    .select("-_id -__v -password")
+    .lean();
 };
 
 router.use(protectAdmin);
+
 router.use(requireModuleAccess("customers"));
 
 router.get("/", async (req: any, res: any) => {
   try {
     const queryFilter = buildQueryFilter(req.query);
-    const accessFilter = await getCustomerAccessFilter(req);
-    const finalFilter = mergeFilters(queryFilter, accessFilter);
+    const accessFilter =
+      await getCustomerAccessFilter(req);
+
+    const finalFilter = mergeFilters(
+      queryFilter,
+      accessFilter
+    );
 
     const customers = await Customer.find(finalFilter)
       .select("-_id -__v -password")
-      .sort({ createdAt: -1, id: -1 })
+      .sort({
+        createdAt: -1,
+        id: -1,
+      })
       .lean();
 
     return res.status(200).json({
@@ -502,12 +662,17 @@ router.get("/", async (req: any, res: any) => {
 
 router.get("/:id", async (req: any, res: any) => {
   try {
-    const customer = await findAccessibleCustomerById(req, req.params.id);
+    const customer =
+      await findAccessibleCustomerById(
+        req,
+        req.params.id
+      );
 
     if (!customer) {
       return res.status(404).json({
         success: false,
-        message: "Customer not found or you do not have access.",
+        message:
+          "Customer not found or you do not have access.",
       });
     }
 
@@ -529,11 +694,15 @@ router.post("/", async (req: any, res: any) => {
     if (!canWriteCustomer(req.admin?.role)) {
       return res.status(403).json({
         success: false,
-        message: "Access denied. Your role cannot create customers.",
+        message:
+          "Access denied. Your role cannot create customers.",
       });
     }
 
-    const validationError = validateCustomer(req.body, false);
+    const validationError = validateCustomer(
+      req.body,
+      false
+    );
 
     if (validationError) {
       return res.status(400).json({
@@ -542,9 +711,14 @@ router.post("/", async (req: any, res: any) => {
       });
     }
 
-    const payload = normalizeCustomerPayload(req.body);
+    const payload =
+      normalizeCustomerPayload(req.body);
 
-    const branchAccessError = validateAdminBranchAccessForPayload(req, payload);
+    const branchAccessError =
+      validateAdminBranchAccessForPayload(
+        req,
+        payload
+      );
 
     if (branchAccessError) {
       return res.status(403).json({
@@ -562,22 +736,34 @@ router.post("/", async (req: any, res: any) => {
       accountType: payload.accountType,
       ifsc: payload.ifsc,
       cif: payload.cif,
-      balance: payload.balance || "₹0",
+
+      // Important: balance is stored only as a number.
+      balance: cleanMoney(payload.balance),
+
       branch: payload.branch,
       employee: payload.employee || "",
       kyc: payload.kyc || "Pending",
       status: payload.status || "Active",
-      createdBy: req.admin?.email || req.admin?.name || "",
-      createdByRole: req.admin?.role || "",
+      createdBy:
+        req.admin?.email ||
+        req.admin?.name ||
+        "",
+      createdByRole:
+        req.admin?.role ||
+        "",
     });
 
-    const savedCustomer = await Customer.findOne({ id: customer.id })
-      .select("-_id -__v -password")
-      .lean();
+    const savedCustomer =
+      await Customer.findOne({
+        id: customer.id,
+      })
+        .select("-_id -__v -password")
+        .lean();
 
     return res.status(201).json({
       success: true,
-      message: "Customer created successfully",
+      message:
+        "Customer created successfully",
       data: savedCustomer,
     });
   } catch (error: any) {
@@ -594,22 +780,31 @@ router.put("/:id", async (req: any, res: any) => {
     if (!canWriteCustomer(req.admin?.role)) {
       return res.status(403).json({
         success: false,
-        message: "Access denied. Your role cannot edit customers.",
+        message:
+          "Access denied. Your role cannot edit customers.",
       });
     }
 
     const { id } = req.params;
 
-    const existingCustomer = await findAccessibleCustomerById(req, id);
+    const existingCustomer =
+      await findAccessibleCustomerById(
+        req,
+        id
+      );
 
     if (!existingCustomer) {
       return res.status(404).json({
         success: false,
-        message: "Customer not found or you do not have access.",
+        message:
+          "Customer not found or you do not have access.",
       });
     }
 
-    const validationError = validateCustomer(req.body, true);
+    const validationError = validateCustomer(
+      req.body,
+      true
+    );
 
     if (validationError) {
       return res.status(400).json({
@@ -618,17 +813,19 @@ router.put("/:id", async (req: any, res: any) => {
       });
     }
 
-    const updateData = normalizeCustomerPayload(req.body);
+    const updateData =
+      normalizeCustomerPayload(req.body);
 
     const branchCheckPayload = {
       ...existingCustomer,
       ...updateData,
     };
 
-    const branchAccessError = validateAdminBranchAccessForPayload(
-      req,
-      branchCheckPayload
-    );
+    const branchAccessError =
+      validateAdminBranchAccessForPayload(
+        req,
+        branchCheckPayload
+      );
 
     if (branchAccessError) {
       return res.status(403).json({
@@ -637,20 +834,38 @@ router.put("/:id", async (req: any, res: any) => {
       });
     }
 
-    const accessFilter = await getCustomerAccessFilter(req);
-    const finalFilter = mergeFilters({ id }, accessFilter);
+    const accessFilter =
+      await getCustomerAccessFilter(req);
 
-    const customer = await Customer.findOneAndUpdate(finalFilter, updateData, {
-      new: true,
-      runValidators: true,
-      context: "query",
-    })
-      .select("-_id -__v -password")
-      .lean();
+    const finalFilter = mergeFilters(
+      {
+        $or: [
+          { id },
+          { customerId: id },
+          { accountNumber: id },
+          { email: id },
+        ],
+      },
+      accessFilter
+    );
+
+    const customer =
+      await Customer.findOneAndUpdate(
+        finalFilter,
+        updateData,
+        {
+          new: true,
+          runValidators: true,
+          context: "query",
+        }
+      )
+        .select("-_id -__v -password")
+        .lean();
 
     return res.status(200).json({
       success: true,
-      message: "Customer updated successfully",
+      message:
+        "Customer updated successfully",
       data: customer,
     });
   } catch (error: any) {
@@ -667,35 +882,54 @@ router.delete("/:id", async (req: any, res: any) => {
     if (!canWriteCustomer(req.admin?.role)) {
       return res.status(403).json({
         success: false,
-        message: "Access denied. Your role cannot delete customers.",
+        message:
+          "Access denied. Your role cannot delete customers.",
       });
     }
 
     const { id } = req.params;
 
-    const accessFilter = await getCustomerAccessFilter(req);
-    const finalFilter = mergeFilters({ id }, accessFilter);
+    const accessFilter =
+      await getCustomerAccessFilter(req);
 
-    const customer = await Customer.findOneAndDelete(finalFilter)
-      .select("-_id -__v -password")
-      .lean();
+    const finalFilter = mergeFilters(
+      {
+        $or: [
+          { id },
+          { customerId: id },
+          { accountNumber: id },
+          { email: id },
+        ],
+      },
+      accessFilter
+    );
+
+    const customer =
+      await Customer.findOneAndDelete(
+        finalFilter
+      )
+        .select("-_id -__v -password")
+        .lean();
 
     if (!customer) {
       return res.status(404).json({
         success: false,
-        message: "Customer not found or you do not have access.",
+        message:
+          "Customer not found or you do not have access.",
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Customer deleted successfully",
+      message:
+        "Customer deleted successfully",
       data: customer,
     });
   } catch (error: any) {
     return res.status(500).json({
       success: false,
-      message: "Failed to delete customer",
+      message:
+        "Failed to delete customer",
       error: getErrorMessage(error),
     });
   }
