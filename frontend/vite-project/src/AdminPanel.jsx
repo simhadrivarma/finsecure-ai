@@ -368,8 +368,8 @@ const configs = {
       { name: "manager", label: "Branch Manager", required: true },
       { name: "employees", label: "Employees", type: "number", defaultValue: 0 },
       { name: "customers", label: "Customers", type: "number", defaultValue: 0 },
-      { name: "balance", label: "Total Balance", defaultValue: "₹0" },
-      { name: "loans", label: "Total Loans", defaultValue: "₹0" },
+      { name: "balance", label: "Balance", type: "number", defaultValue: 0 },
+      { name: "loans", label: "Total Loans", type: "number", defaultValue: 0 },
       {
         name: "status",
         label: "Status",
@@ -423,7 +423,7 @@ const configs = {
       },
       { name: "ifsc", label: "IFSC Code", required: true },
       { name: "cif", label: "CIF Number", required: true },
-      { name: "balance", label: "Balance", type: "number", defaultValue: "₹0" },
+      { name: "balance", label: "Balance", type: "number", type: "number", defaultValue: 0 },
       { name: "branch", label: "Branch", required: true },
       {
   name: "branch",
@@ -489,9 +489,9 @@ const configs = {
       { name: "interest", label: "Interest Rate", required: true },
       { name: "startDate", label: "Start Date", required: true },
       { name: "endDate", label: "End Date", required: true },
-      { name: "emi", label: "Monthly EMI", defaultValue: "₹0" },
-      { name: "paid", label: "Paid Amount", defaultValue: "₹0" },
-      { name: "pending", label: "Pending Amount", defaultValue: "₹0" },
+      { name: "emi", label: "Monthly EMI", type: "number", defaultValue: 0 },
+      { name: "paid", label: "Paid Amount", type: "number", defaultValue: 0 },
+      { name: "pending", label: "Pending Amount", type: "number", defaultValue: 0 },
       { name: "officer", label: "Loan Officer" },
       {
         name: "status",
@@ -1198,14 +1198,17 @@ const handleEmployeeIdChange = (value) => {
       delete cleanedForm.password;
     }
 
-    ["amount", "balance", "emi", "paid", "pending", "loans"].forEach((key) => {
+   const moneyFields = ["amount", "balance", "emi", "paid", "pending", "loans"];
+
+moneyFields.forEach((key) => {
   if (cleanedForm[key] !== undefined && cleanedForm[key] !== "") {
-    cleanedForm[key] = Number(
-      String(cleanedForm[key])
-        .replace(/₹/g, "")
-        .replace(/,/g, "")
-        .trim()
-    );
+    const cleanValue = String(cleanedForm[key])
+      .replace(/₹/g, "")
+      .replace(/,/g, "")
+      .replace(/\+/g, "")
+      .trim();
+
+    cleanedForm[key] = cleanValue === "" ? 0 : Number(cleanValue);
   }
 });
 
