@@ -909,31 +909,31 @@ const createCrudRoutes = (
         });
       }
  
-      if (payload.email) {
-        const existingEmail = await collection.findOne({
-          email: payload.email,
-        });
+      if (payload.email && entity !== "transaction") {
+  const existingEmail = await collection.findOne({
+    email: payload.email,
+  });
+
+  if (existingEmail) {
+    return res.status(409).json({
+      success: false,
+      message: `${entity} already exists with this email`,
+    });
+  }
+}
  
-        if (existingEmail) {
-          return res.status(409).json({
-            success: false,
-            message: `${entity} already exists with this email`,
-          });
-        }
-      }
- 
-      if (payload.accountNumber) {
-        const existingAccount = await collection.findOne({
-          accountNumber: payload.accountNumber,
-        });
- 
-        if (existingAccount) {
-          return res.status(409).json({
-            success: false,
-            message: `${entity} already exists with this account number`,
-          });
-        }
-      }
+      if (payload.accountNumber && entity !== "transaction") {
+  const existingAccount = await collection.findOne({
+    accountNumber: payload.accountNumber,
+  });
+
+  if (existingAccount) {
+    return res.status(409).json({
+      success: false,
+      message: `${entity} already exists with this account number`,
+    });
+  }
+}
  
                  if (entity === "admin" || collectionName === "admins") {
         const employeeId = String(
