@@ -4,12 +4,12 @@ import AdminAIChatBox from "./components/AdminAIChatBox";
 const rawApiBaseUrl =
   import.meta.env.VITE_API_URL ||
   import.meta.env.VITE_API_BASE_URL ||
-  "https://finsecure-ai-backend.vercel.app";
+  (import.meta.env.DEV
+    ? "http://localhost:5000"
+    : "https://finsecure-ai-backend.vercel.app");
 
-const API_BASE_URL = String(rawApiBaseUrl).includes("onrender.com")
-  ? "https://finsecure-ai-backend.vercel.app"
-  : String(rawApiBaseUrl || "https://finsecure-ai-backend.vercel.app").replace(/\/$/, "");
-
+const API_BASE_URL = String(rawApiBaseUrl).replace(/\/$/, "");
+  
 const API = {
   admin: `${API_BASE_URL}/api/admins`,
   auditLog: `${API_BASE_URL}/api/audit-logs`,
@@ -69,13 +69,25 @@ const getStoredAdmin = () => {
 
 const normalizeAdminRole = (role) => {
   const value = String(role || "").trim();
-  const lower = value.toLowerCase();
+  const normalized = value.toLowerCase().replace(/[_-]/g, " ").replace(/\s+/g, " ");
 
-  if (!value || lower === "admin" || lower === "superadmin") {
-    return "Super Admin";
-  }
+  const roleMap = {
+    "": "Super Admin",
+    admin: "Super Admin",
+    super: "Super Admin",
+    superadmin: "Super Admin",
+    "super admin": "Super Admin",
+    manager: "Branch Manager",
+    "branch manager": "Branch Manager",
+    "loan officer": "Loan Officer",
+    "loan manager": "Loan Officer",
+    "fraud analyst": "Fraud Analyst",
+    "customer support": "Customer Support",
+    "customer support executive": "Customer Support",
+    "report analyst": "Report Analyst",
+  };
 
-  return value;
+  return roleMap[normalized] || value;
 };
 
 const buildAdminSession = (adminData) => {
@@ -247,12 +259,11 @@ const configs = {
         options: adminRoles,
       },
       {
-        name: "branch",
-        label: "Branch",
-        required: true,
-        readOnly: true,
-        placeholder: "Auto-filled from employee",
-      },
+  name: "branch",
+  label: "Branch",
+  type: "branchSelect",
+  required: true,
+},
       {
         name: "ifsc",
         label: "IFSC Code",
@@ -321,7 +332,6 @@ const configs = {
         type: "branchSelect",
         required: true,
       },
-      { name: "ifsc", label: "IFSC Code", required: true },
       {
   name: "ifsc",
   label: "IFSC Code",
@@ -423,8 +433,6 @@ const configs = {
       },
       { name: "ifsc", label: "IFSC Code", required: true },
       { name: "cif", label: "CIF Number", required: true },
-      { name: "balance", label: "Balance", type: "number", type: "number", defaultValue: 0 },
-      { name: "branch", label: "Branch", required: true },
       {
   name: "branch",
   label: "Branch",
@@ -1002,13 +1010,18 @@ const handleEmployeeIdChange = (value) => {
     return;
   }
 
+  const employeeBranch = getEmployeeBranch(matchedEmployee);
+  const employeeIfsc = getEmployeeIfsc(matchedEmployee);
+
   setForm((prev) => ({
     ...prev,
     employeeId: getEmployeeId(matchedEmployee),
     name: getEmployeeName(matchedEmployee) || prev.name || "",
     email: getEmployeeEmail(matchedEmployee) || prev.email || "",
-    branch: getEmployeeBranch(matchedEmployee) || "",
-    ifsc: getEmployeeIfsc(matchedEmployee) || "",
+    branch: prev.branch || employeeBranch || "",
+    branchName: prev.branchName || prev.branch || employeeBranch || "",
+    ifsc: prev.ifsc || employeeIfsc || "",
+    ifscCode: prev.ifscCode || prev.ifsc || employeeIfsc || "",
   }));
 
   setFormError("");
@@ -1038,23 +1051,43 @@ const handleEmployeeIdChange = (value) => {
   const branchOptions = Array.isArray(branches) ? branches : [];
 
   const getBranchName = (branch) => {
-    return branch?.name || branch?.branchName || branch?.title || "";
+    return String(
+      branch?.name ||
+        branch?.branchName ||
+        branch?.branch ||
+        branch?.title ||
+        ""
+    ).trim();
   };
 
   const getBranchIfsc = (branch) => {
-    return branch?.ifsc || branch?.ifscCode || "";
+    return String(branch?.ifsc || branch?.ifscCode || branch?.IFSC || "")
+      .toUpperCase()
+      .trim();
+  };
+
+  const getBranchCode = (branch) => {
+    return String(branch?.branchCode || branch?.code || branch?.id || "").trim();
+  };
+
+  const getBranchId = (branch) => {
+    return String(branch?._id || branch?.branchId || branch?.id || "").trim();
   };
 
   const handleBranchSelect = (branchName) => {
     const selectedBranch = branchOptions.find(
-      (branch) => getBranchName(branch) === branchName
+      (branch) => getBranchName(branch).toLowerCase() === String(branchName).toLowerCase()
     );
 
-    setForm({
-      ...form,
+    setForm((prev) => ({
+      ...prev,
       branch: branchName,
-      ifsc: getBranchIfsc(selectedBranch) || form.ifsc || "",
-    });
+      branchName,
+      branchCode: selectedBranch ? getBranchCode(selectedBranch) : "",
+      branchId: selectedBranch ? getBranchId(selectedBranch) : "",
+      ifsc: selectedBranch ? getBranchIfsc(selectedBranch) : "",
+      ifscCode: selectedBranch ? getBranchIfsc(selectedBranch) : "",
+    }));
   };
 
 
@@ -1419,6 +1452,7 @@ moneyFields.forEach((key) => {
                 ) : field.type === "select" ? (
                   <select
                     value={form[field.name] || ""}
+                    disabled={viewOnly}
                     onChange={(e) =>
                       setForm({ ...form, [field.name]: e.target.value })
                     }
@@ -1434,7 +1468,11 @@ moneyFields.forEach((key) => {
                     type={inputType}
                     value={form[field.name] ?? ""}
                     placeholder={getPlaceholder(field)}
+                    readOnly={field.readOnly || viewOnly}
                     onChange={(e) => {
+                      if (field.readOnly || viewOnly) {
+                        return;
+                      }
                       let value = e.target.value;
                       
                       if (field.name === "employeeId") {
@@ -2766,38 +2804,82 @@ export default function App() {
       let finalForm = { ...form };
 
 if (type === "admin") {
-  const employeeId = String(finalForm.employeeId || "").trim();
+        const employeeId = String(finalForm.employeeId || "").trim();
 
-  if (!employeeId) {
-    throw new Error("Employee ID is required to create admin.");
-  }
+        if (!employeeId) {
+          throw new Error("Employee ID is required to create admin.");
+        }
 
-  const matchedEmployee = (data.employee || []).find((employee) => {
-    const idOne = String(employee.id || "").trim().toLowerCase();
-    const idTwo = String(employee.employeeId || "").trim().toLowerCase();
-    const given = employeeId.toLowerCase();
+        const matchedEmployee = (data.employee || []).find((employee) => {
+          const possibleIds = [
+            employee?.id,
+            employee?.employeeId,
+            employee?.employeeID,
+          ]
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter(Boolean);
 
-    return idOne === given || idTwo === given;
-  });
+          return possibleIds.includes(employeeId.toLowerCase());
+        });
 
-  if (!matchedEmployee) {
-    throw new Error(
-      "Invalid Employee ID. Please enter a valid employee ID from Employee Management."
-    );
-  }
+        if (!matchedEmployee) {
+          throw new Error(
+            "Invalid Employee ID. Please enter a valid employee ID from Employee Management."
+          );
+        }
 
-  finalForm.employeeId = matchedEmployee.id || matchedEmployee.employeeId || employeeId;
-  finalForm.branch = matchedEmployee.branch || matchedEmployee.branchName || finalForm.branch || "";
-  finalForm.ifsc = matchedEmployee.ifsc || matchedEmployee.ifscCode || finalForm.ifsc || "";
+        const selectedBranchName = String(finalForm.branch || "").trim();
+        const selectedBranch = (data.branch || []).find((branch) => {
+          const names = [branch?.name, branch?.branchName, branch?.branch, branch?.title]
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter(Boolean);
 
-  if (!finalForm.branch) {
-    throw new Error("Selected employee does not have a branch assigned.");
-  }
+          return names.includes(selectedBranchName.toLowerCase());
+        });
 
-  if (!finalForm.ifsc) {
-    throw new Error("Selected employee does not have an IFSC code assigned.");
-  }
-}
+        const employeeBranch =
+          matchedEmployee.branch ||
+          matchedEmployee.branchName ||
+          matchedEmployee.assignedBranch ||
+          "";
+
+        const employeeIfsc =
+          matchedEmployee.ifsc ||
+          matchedEmployee.ifscCode ||
+          matchedEmployee.IFSC ||
+          "";
+
+        const selectedBranchIfsc =
+          selectedBranch?.ifsc ||
+          selectedBranch?.ifscCode ||
+          selectedBranch?.IFSC ||
+          "";
+
+        finalForm.employeeId =
+          matchedEmployee.employeeId ||
+          matchedEmployee.employeeID ||
+          matchedEmployee.id ||
+          employeeId;
+
+        finalForm.name = finalForm.name || matchedEmployee.name || matchedEmployee.employeeName || "";
+        finalForm.email = finalForm.email || matchedEmployee.email || matchedEmployee.employeeEmail || "";
+        finalForm.branch = selectedBranchName || employeeBranch;
+        finalForm.branchName = finalForm.branch;
+        finalForm.branchCode = selectedBranch?.branchCode || selectedBranch?.code || finalForm.branchCode || "";
+        finalForm.branchId = selectedBranch?._id || selectedBranch?.branchId || selectedBranch?.id || finalForm.branchId || "";
+        finalForm.ifsc = String(selectedBranchIfsc || finalForm.ifsc || employeeIfsc || "")
+          .toUpperCase()
+          .trim();
+        finalForm.ifscCode = finalForm.ifsc;
+
+        if (!finalForm.branch) {
+          throw new Error("Please select a branch for this admin.");
+        }
+
+        if (!finalForm.ifsc) {
+          throw new Error("Selected branch does not have an IFSC code.");
+        }
+      }
 
       const response = await fetch(
         isEdit ? `${config.api}/${form.id}` : config.api,
@@ -3161,8 +3243,8 @@ if (type === "admin") {
           config={configs[modal.type]}
           mode={modal.mode}
           item={modal.item}
-          branches={branchRows.length ? branchRows : data.branch}
           branches={data.branch || []}
+          employees={data.employee || []}
           onClose={() =>
             setModal({
               open: false,

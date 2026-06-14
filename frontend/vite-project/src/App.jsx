@@ -3,8 +3,13 @@ import AdminPanel from "./AdminPanel";
 import Dashboard from "./Dashboard";
 import "./App.css";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "https://finsecure-ai-backend.vercel.app";
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV
+    ? "http://127.0.0.1:5000"
+    : "https://finsecure-ai-backend.vercel.app")
+).replace(/\/$/, "");
 
 const normalizeRole = (role = "") => {
   return String(role || "")
@@ -627,35 +632,58 @@ export default function App() {
 
             <label style={styles.label}>Select Branch</label>
             <select
-              style={styles.input}
-              value={registerForm.branch}
-              onChange={(e) => handleRegisterChange("branch", e.target.value)}
-            >
-              <option value="">Select branch</option>
-              <option value="Main Branch">Main Branch - FINS0001001</option>
+  value={adminForm.branch || ""}
+  onChange={(e) => {
+    const selectedBranchName = e.target.value;
 
-              {branches.map((branch) => {
-                const branchName =
-                  branch.name || branch.branchName || "Unnamed Branch";
-                const ifsc = branch.ifsc || branch.ifscCode || branch.IFSC || "";
+    const selectedBranch = branches.find(
+      (branch) =>
+        branch.branchName === selectedBranchName ||
+        branch.name === selectedBranchName ||
+        branch.branch === selectedBranchName
+    );
 
-                return (
-                  <option
-                    key={branch._id || branch.id || branchName}
-                    value={branchName}
-                  >
-                    {branchName}
-                    {ifsc ? ` - ${ifsc}` : ""}
-                  </option>
-                );
-              })}
-            </select>
+    setAdminForm({
+      ...adminForm,
+      branch: selectedBranchName,
+      branchName: selectedBranchName,
+      branchCode:
+        selectedBranch?.branchCode ||
+        selectedBranch?.code ||
+        "",
+      ifsc:
+        selectedBranch?.ifsc ||
+        selectedBranch?.ifscCode ||
+        "",
+      ifscCode:
+        selectedBranch?.ifsc ||
+        selectedBranch?.ifscCode ||
+        "",
+    });
+  }}
+  required
+>
+  <option value="">Select Branch</option>
 
-            <div style={styles.branchInfo}>
-              {branches.length > 0
-                ? `${branches.length} admin branch records loaded`
-                : "If no branch is selected, Main Branch will be used"}
-            </div>
+  {branches.map((branch) => {
+    const branchName =
+      branch.branchName ||
+      branch.name ||
+      branch.branch ||
+      "";
+
+    const ifscCode =
+      branch.ifsc ||
+      branch.ifscCode ||
+      "";
+
+    return (
+      <option key={branch._id || branch.id || branchName} value={branchName}>
+        {branchName} {ifscCode ? `- ${ifscCode}` : ""}
+      </option>
+    );
+  })}
+</select>
 
             <label style={styles.label}>Email</label>
             <input
