@@ -54,12 +54,19 @@ const isCustomerRole = (role = "") => {
 const getUserFromResult = (result) => {
   return (
     result?.user ||
-    result?.data ||
+    result?.data?.user ||
+    result?.data?.customer ||
+    result?.data?.admin ||
     result?.account ||
     result?.customer ||
     result?.admin ||
+    result?.data ||
     null
   );
+};
+
+const getTokenFromResult = (result) => {
+  return result?.token || result?.data?.token || result?.accessToken || null;
 };
 
 export default function App() {
@@ -78,6 +85,7 @@ export default function App() {
     aadhaarNumber: "",
     panNumber: "",
     branch: "",
+    ifsc: "",
     email: "",
     password: "",
   });
@@ -132,25 +140,37 @@ export default function App() {
     localStorage.removeItem("userPan");
   };
 
+  const changeUrl = (path, replace = false) => {
+    if (window.location.pathname === path) return;
+
+    if (replace) {
+      window.history.replaceState({}, "", path);
+    } else {
+      window.history.pushState({}, "", path);
+    }
+  };
+
   const goTo = (newPage) => {
     setPage(newPage);
 
     if (newPage === "admin") {
-      window.history.pushState({}, "", "/admin");
+      changeUrl("/admin");
       return;
     }
 
     if (newPage === "customer") {
-      window.history.pushState({}, "", "/dashboard");
+      changeUrl("/dashboard");
       return;
     }
 
-    window.history.pushState({}, "", "/");
+    setPage("auth");
+    setMode("login");
+    changeUrl("/");
   };
 
   const saveSession = (result) => {
     const user = getUserFromResult(result);
-    const token = result?.token;
+    const token = getTokenFromResult(result);
 
     if (!user || !token) {
       throw new Error("Invalid login response from backend");
@@ -178,7 +198,7 @@ export default function App() {
     localStorage.setItem("role", role);
     localStorage.setItem("userRole", role);
 
-    localStorage.setItem("userName", safeUser.name || "Customer");
+    localStorage.setItem("userName", safeUser.name || safeUser.customerName || "Customer");
     localStorage.setItem("userEmail", safeUser.email || "");
     localStorage.setItem("userPhone", safeUser.phone || safeUser.phoneNumber || "");
     localStorage.setItem("userAadhaar", safeUser.aadhaarNumber || "");
@@ -203,6 +223,8 @@ export default function App() {
       localStorage.setItem("finsecure_customer", JSON.stringify(safeUser));
       localStorage.setItem("customer", JSON.stringify(safeUser));
       localStorage.setItem("customerData", JSON.stringify(safeUser));
+      localStorage.setItem("isAuthenticated", "true");
+      localStorage.setItem("isLoggedIn", "true");
 
       localStorage.removeItem("finsecure_admin");
       localStorage.removeItem("admin");
@@ -236,7 +258,9 @@ export default function App() {
     throw new Error(`Unknown user role: ${role}`);
   };
 
-  useEffect(() => {
+  const syncPageWithUrl = () => {
+    const path = window.location.pathname.toLowerCase();
+
     const savedUser =
       localStorage.getItem("finsecure_user") ||
       localStorage.getItem("finsecure_admin") ||
@@ -248,11 +272,10 @@ export default function App() {
       localStorage.getItem("adminToken") ||
       localStorage.getItem("token");
 
-    const path = window.location.pathname;
-
     if (savedUser && savedToken) {
       try {
         const user = JSON.parse(savedUser);
+
         const role =
           user?.role ||
           user?.accountRole ||
@@ -260,7 +283,7 @@ export default function App() {
           user?.type ||
           "";
 
-        if (path.includes("/admin")) {
+        if (path === "/admin") {
           if (isAdminRole(role)) {
             setPage("admin");
             return;
@@ -269,10 +292,11 @@ export default function App() {
           clearSession();
           setPage("auth");
           setMode("login");
+          changeUrl("/", true);
           return;
         }
 
-        if (path.includes("/dashboard")) {
+        if (path === "/dashboard") {
           if (isCustomerRole(role)) {
             setPage("customer");
             return;
@@ -280,20 +304,34 @@ export default function App() {
 
           if (isAdminRole(role)) {
             setPage("admin");
-            window.history.replaceState({}, "", "/admin");
+            changeUrl("/admin", true);
+            return;
+          }
+        }
+
+        if (path === "/register") {
+          if (isAdminRole(role)) {
+            setPage("admin");
+            changeUrl("/admin", true);
+            return;
+          }
+
+          if (isCustomerRole(role)) {
+            setPage("customer");
+            changeUrl("/dashboard", true);
             return;
           }
         }
 
         if (isAdminRole(role)) {
           setPage("admin");
-          window.history.replaceState({}, "", "/admin");
+          changeUrl("/admin", true);
           return;
         }
 
         if (isCustomerRole(role)) {
           setPage("customer");
-          window.history.replaceState({}, "", "/dashboard");
+          changeUrl("/dashboard", true);
           return;
         }
       } catch {
@@ -302,7 +340,31 @@ export default function App() {
     }
 
     setPage("auth");
+
+    if (path === "/register") {
+      setMode("register");
+      return;
+    }
+
     setMode("login");
+
+    if (path === "/admin" || path === "/dashboard") {
+      changeUrl("/", true);
+    }
+  };
+
+  useEffect(() => {
+    syncPageWithUrl();
+
+    const handlePopState = () => {
+      syncPageWithUrl();
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
   }, []);
 
   useEffect(() => {
@@ -314,20 +376,83 @@ export default function App() {
       const response = await fetch(`${API_BASE_URL}/api/branches`);
       const result = await response.json();
 
+      if (Array.isArray(result)) {
+        setBranches(result);
+        return;
+      }
+
       if (result.success && Array.isArray(result.data)) {
         setBranches(result.data);
-      } else {
-        setBranches([]);
+        return;
       }
+
+      if (Array.isArray(result.branches)) {
+        setBranches(result.branches);
+        return;
+      }
+
+      setBranches([]);
     } catch (err) {
       console.error("Failed to load branches:", err);
       setBranches([]);
     }
   };
 
+  const getBranchName = (branch) => {
+    return String(
+      branch?.name ||
+        branch?.branchName ||
+        branch?.branch ||
+        branch?.title ||
+        ""
+    ).trim();
+  };
+
+  const getBranchIfsc = (branch) => {
+    return String(branch?.ifsc || branch?.ifscCode || branch?.IFSC || "")
+      .toUpperCase()
+      .trim();
+  };
+
+  const handleBranchSelect = (branchName) => {
+    const selectedBranch = branches.find(
+      (branch) => getBranchName(branch) === branchName
+    );
+
+    setError("");
+    setSuccess("");
+
+    setRegisterForm((prev) => ({
+      ...prev,
+      branch: branchName,
+      ifsc: getBranchIfsc(selectedBranch),
+    }));
+  };
+
+  const openRegister = () => {
+    setPage("auth");
+    setMode("register");
+    setError("");
+    setSuccess("");
+    loadBranches();
+
+    // Create Customer Account must open registration page first.
+    // Dashboard should open only after successful customer registration/login.
+    changeUrl("/register");
+  };
+
+  const openLogin = () => {
+    setPage("auth");
+    setMode("login");
+    setError("");
+    setSuccess("");
+    changeUrl("/");
+  };
+
   const handleLoginChange = (field, value) => {
     setError("");
     setSuccess("");
+
     setLoginForm((prev) => ({
       ...prev,
       [field]: value,
@@ -337,6 +462,7 @@ export default function App() {
   const handleRegisterChange = (field, value) => {
     setError("");
     setSuccess("");
+
     setRegisterForm((prev) => ({
       ...prev,
       [field]: value,
@@ -349,7 +475,7 @@ export default function App() {
     setError("");
     setSuccess("");
 
-    if (!loginForm.email || !loginForm.password) {
+    if (!loginForm.email.trim() || !loginForm.password.trim()) {
       setError("Please enter email and password");
       return;
     }
@@ -363,7 +489,7 @@ export default function App() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: loginForm.email,
+          email: loginForm.email.trim(),
           password: loginForm.password,
         }),
       });
@@ -465,12 +591,15 @@ export default function App() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: registerForm.name,
-          phone: registerForm.phone,
-          aadhaarNumber: registerForm.aadhaarNumber,
-          panNumber: registerForm.panNumber,
+          name: registerForm.name.trim(),
+          phone: registerForm.phone.trim(),
+          aadhaarNumber: registerForm.aadhaarNumber.trim(),
+          panNumber: registerForm.panNumber.trim(),
           branch: selectedBranch,
-          email: registerForm.email,
+          branchName: selectedBranch,
+          ifsc: registerForm.ifsc,
+          ifscCode: registerForm.ifsc,
+          email: registerForm.email.trim(),
           password: registerForm.password,
           role: "customer",
         }),
@@ -483,6 +612,7 @@ export default function App() {
       }
 
       const user = saveSession(result);
+
       setSuccess("Customer registered successfully");
 
       if (isCustomerRole(user?.role)) {
@@ -511,13 +641,14 @@ export default function App() {
       aadhaarNumber: "",
       panNumber: "",
       branch: "",
+      ifsc: "",
       email: "",
       password: "",
     });
 
     setMode("login");
     setPage("auth");
-    window.history.pushState({}, "", "/");
+    changeUrl("/");
   };
 
   if (page === "admin") {
@@ -543,7 +674,7 @@ export default function App() {
         <p style={styles.subtitle}>
           {mode === "login"
             ? "One secure login for Admin and Customer banking portals."
-            : "Create your customer account securely on the same page."}
+            : "Create your customer account securely."}
         </p>
 
         {mode === "login" ? (
@@ -632,58 +763,35 @@ export default function App() {
 
             <label style={styles.label}>Select Branch</label>
             <select
-  value={adminForm.branch || ""}
-  onChange={(e) => {
-    const selectedBranchName = e.target.value;
+              style={styles.input}
+              value={registerForm.branch}
+              onChange={(e) => handleBranchSelect(e.target.value)}
+              required
+            >
+              <option value="">Select Branch</option>
 
-    const selectedBranch = branches.find(
-      (branch) =>
-        branch.branchName === selectedBranchName ||
-        branch.name === selectedBranchName ||
-        branch.branch === selectedBranchName
-    );
+              {branches.map((branch) => {
+                const branchName = getBranchName(branch);
+                const ifscCode = getBranchIfsc(branch);
 
-    setAdminForm({
-      ...adminForm,
-      branch: selectedBranchName,
-      branchName: selectedBranchName,
-      branchCode:
-        selectedBranch?.branchCode ||
-        selectedBranch?.code ||
-        "",
-      ifsc:
-        selectedBranch?.ifsc ||
-        selectedBranch?.ifscCode ||
-        "",
-      ifscCode:
-        selectedBranch?.ifsc ||
-        selectedBranch?.ifscCode ||
-        "",
-    });
-  }}
-  required
->
-  <option value="">Select Branch</option>
+                if (!branchName) {
+                  return null;
+                }
 
-  {branches.map((branch) => {
-    const branchName =
-      branch.branchName ||
-      branch.name ||
-      branch.branch ||
-      "";
+                return (
+                  <option
+                    key={branch._id || branch.id || branchName}
+                    value={branchName}
+                  >
+                    {branchName} {ifscCode ? `- ${ifscCode}` : ""}
+                  </option>
+                );
+              })}
+            </select>
 
-    const ifscCode =
-      branch.ifsc ||
-      branch.ifscCode ||
-      "";
-
-    return (
-      <option key={branch._id || branch.id || branchName} value={branchName}>
-        {branchName} {ifscCode ? `- ${ifscCode}` : ""}
-      </option>
-    );
-  })}
-</select>
+            {registerForm.ifsc && (
+              <div style={styles.branchInfo}>IFSC: {registerForm.ifsc}</div>
+            )}
 
             <label style={styles.label}>Email</label>
             <input
@@ -729,12 +837,7 @@ export default function App() {
             <button
               type="button"
               style={styles.customerButton}
-              onClick={() => {
-                setMode("register");
-                setError("");
-                setSuccess("");
-                loadBranches();
-              }}
+              onClick={openRegister}
             >
               Create Customer Account
             </button>
@@ -742,11 +845,7 @@ export default function App() {
             <button
               type="button"
               style={styles.customerButton}
-              onClick={() => {
-                setMode("login");
-                setError("");
-                setSuccess("");
-              }}
+              onClick={openLogin}
             >
               Already Have Account? Login
             </button>
@@ -763,8 +862,9 @@ export default function App() {
         </div>
 
         <p style={styles.footerText}>
-          Admin, Super Admin, Branch Manager, Loan Officer, Customer Support
-          and Staff users will go to Admin Portal. Customer users will go to Customer Dashboard automatically.
+          Admin, Super Admin, Branch Manager, Loan Officer, Customer Support and
+          Staff users will go to Admin Portal. Customer users will go to
+          Customer Dashboard automatically.
         </p>
       </div>
     </div>

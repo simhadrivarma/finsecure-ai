@@ -625,7 +625,6 @@ const findAccessibleCustomerById = async (
 
 router.use(protectAdmin);
 
-router.use(requireModuleAccess("customers"));
 
 router.get("/", async (req: any, res: any) => {
   try {
