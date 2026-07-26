@@ -1,17 +1,35 @@
+// @ts-nocheck
+
 const mongoose = require("mongoose");
 
+/* Convert formatted currency values into numbers */
 const moneyToNumber = (value: any) => {
-  const clean = String(value || "")
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return 0;
+  }
+
+  const clean = String(value)
     .replace(/₹/g, "")
     .replace(/,/g, "")
+    .replace(/\+/g, "")
     .trim();
 
-  if (clean === "") return 0;
+  if (clean === "") {
+    return 0;
+  }
 
   const numberValue = Number(clean);
-  return Number.isNaN(numberValue) ? NaN : numberValue;
+
+  return Number.isNaN(numberValue)
+    ? NaN
+    : numberValue;
 };
 
+/* Store money in Indian currency format */
 const formatMoney = (value: any) => {
   const numberValue = moneyToNumber(value);
 
@@ -22,6 +40,14 @@ const formatMoney = (value: any) => {
   return `₹${numberValue.toLocaleString("en-IN")}`;
 };
 
+/* Clean account number without removing FS prefix */
+const cleanAccountNumber = (value: any) => {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .trim();
+};
+
 const loanSchema = new mongoose.Schema(
   {
     id: {
@@ -29,6 +55,7 @@ const loanSchema = new mongoose.Schema(
       required: true,
       unique: true,
       trim: true,
+      index: true,
     },
 
     customer: {
@@ -41,43 +68,70 @@ const loanSchema = new mongoose.Schema(
       type: String,
       required: [true, "Account number is required"],
       trim: true,
+      uppercase: true,
+      index: true,
+
       set: function (value: any) {
-        return String(value || "").replace(/\D/g, "");
+        return cleanAccountNumber(value);
       },
+
       validate: {
         validator: function (value: any) {
-          const digits = String(value || "").replace(/\D/g, "");
-          return digits.length >= 9 && digits.length <= 18;
+          const cleanedValue =
+            cleanAccountNumber(value);
+
+          return (
+            cleanedValue.length >= 9 &&
+            cleanedValue.length <= 20
+          );
         },
-        message: "Account number must be 9 to 18 digits",
+
+        message:
+          "Account number must contain 9 to 20 characters",
       },
     },
 
     type: {
       type: String,
       required: [true, "Loan type is required"],
-      enum: [
-        "Home Loan",
-        "Business Loan",
-        "Personal Loan",
-        "Vehicle Loan",
-        "Education Loan",
-        "Gold Loan",
-      ],
+
+      enum: {
+        values: [
+          "Home Loan",
+          "Business Loan",
+          "Personal Loan",
+          "Vehicle Loan",
+          "Education Loan",
+          "Gold Loan",
+        ],
+
+        message: "Invalid loan type",
+      },
+
+      trim: true,
     },
 
     amount: {
       type: String,
       required: [true, "Loan amount is required"],
+
       set: function (value: any) {
         return formatMoney(value);
       },
+
       validate: {
         validator: function (value: any) {
-          const numberValue = moneyToNumber(value);
-          return !Number.isNaN(numberValue) && numberValue > 0;
+          const numberValue =
+            moneyToNumber(value);
+
+          return (
+            !Number.isNaN(numberValue) &&
+            numberValue > 0
+          );
         },
-        message: "Loan amount must be greater than 0",
+
+        message:
+          "Loan amount must be greater than 0",
       },
     },
 
@@ -85,12 +139,24 @@ const loanSchema = new mongoose.Schema(
       type: String,
       required: [true, "Interest rate is required"],
       trim: true,
+
       validate: {
         validator: function (value: any) {
-          const numberValue = Number(String(value || "").replace(/%/g, "").trim());
-          return !Number.isNaN(numberValue) && numberValue >= 0 && numberValue <= 100;
+          const numberValue = Number(
+            String(value || "")
+              .replace(/%/g, "")
+              .trim()
+          );
+
+          return (
+            !Number.isNaN(numberValue) &&
+            numberValue >= 0 &&
+            numberValue <= 100
+          );
         },
-        message: "Interest rate must be between 0 and 100",
+
+        message:
+          "Interest rate must be between 0 and 100",
       },
     },
 
@@ -109,45 +175,72 @@ const loanSchema = new mongoose.Schema(
     emi: {
       type: String,
       default: "₹0",
+
       set: function (value: any) {
         return formatMoney(value);
       },
+
       validate: {
         validator: function (value: any) {
-          const numberValue = moneyToNumber(value);
-          return !Number.isNaN(numberValue) && numberValue >= 0;
+          const numberValue =
+            moneyToNumber(value);
+
+          return (
+            !Number.isNaN(numberValue) &&
+            numberValue >= 0
+          );
         },
-        message: "Monthly EMI must be a valid number",
+
+        message:
+          "Monthly EMI must be a valid number",
       },
     },
 
     paid: {
       type: String,
       default: "₹0",
+
       set: function (value: any) {
         return formatMoney(value);
       },
+
       validate: {
         validator: function (value: any) {
-          const numberValue = moneyToNumber(value);
-          return !Number.isNaN(numberValue) && numberValue >= 0;
+          const numberValue =
+            moneyToNumber(value);
+
+          return (
+            !Number.isNaN(numberValue) &&
+            numberValue >= 0
+          );
         },
-        message: "Paid amount must be a valid number",
+
+        message:
+          "Paid amount must be a valid number",
       },
     },
 
     pending: {
       type: String,
       default: "₹0",
+
       set: function (value: any) {
         return formatMoney(value);
       },
+
       validate: {
         validator: function (value: any) {
-          const numberValue = moneyToNumber(value);
-          return !Number.isNaN(numberValue) && numberValue >= 0;
+          const numberValue =
+            moneyToNumber(value);
+
+          return (
+            !Number.isNaN(numberValue) &&
+            numberValue >= 0
+          );
         },
-        message: "Pending amount must be a valid number",
+
+        message:
+          "Pending amount must be a valid number",
       },
     },
 
@@ -157,17 +250,66 @@ const loanSchema = new mongoose.Schema(
       trim: true,
     },
 
+    /*
+      Pending is included because a newly submitted loan
+      application uses Pending as its initial status.
+    */
     status: {
       type: String,
-      enum: ["Active", "Closed", "Review", "Defaulted"],
-      default: "Active",
+
+      enum: {
+        values: [
+          "Pending",
+          "Review",
+          "Under Review",
+          "Approved",
+          "Rejected",
+          "Active",
+          "Closed",
+          "Defaulted",
+        ],
+
+        message:
+          "`{VALUE}` is not a valid loan status",
+      },
+
+      default: "Pending",
+      trim: true,
+      index: true,
     },
   },
   {
     timestamps: true,
+    versionKey: false,
+    collection: "loans",
   }
 );
 
-const Loan = mongoose.models.Loan || mongoose.model("Loan", loanSchema);
+/* Remove internal and sensitive fields from responses */
+loanSchema.set("toJSON", {
+  transform: (
+    _document: any,
+    returnedObject: any
+  ) => {
+    delete returnedObject.__v;
+
+    return returnedObject;
+  },
+});
+
+loanSchema.set("toObject", {
+  transform: (
+    _document: any,
+    returnedObject: any
+  ) => {
+    delete returnedObject.__v;
+
+    return returnedObject;
+  },
+});
+
+const Loan =
+  mongoose.models.Loan ||
+  mongoose.model("Loan", loanSchema);
 
 module.exports = Loan;
