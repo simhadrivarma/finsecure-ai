@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import AIChatBox from "./components/AIChatBox";
+import { QRCodeSVG } from "qrcode.react";
 import {
   LayoutDashboard,
   Landmark,
@@ -39,7 +40,9 @@ import {
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL ||
   import.meta.env.VITE_API_BASE_URL ||
-  "https://finsecure-ai-backend.vercel.app"
+  (import.meta.env.DEV
+    ? "http://127.0.0.1:5000"
+    : "https://finsecure-ai-backend.vercel.app")
 ).replace(/\/$/, "");
 
 const API = API_BASE_URL.endsWith("/api")
@@ -90,7 +93,7 @@ const safeJSON = (key, fallback) => {
 };
 
 const formatMoney = (amount) => {
-  return `₹${Number(amount || 0).toLocaleString("en-IN")}`;
+  return `â‚¹${Number(amount || 0).toLocaleString("en-IN")}`;
 };
 
 const formatDate = (date) => {
@@ -145,6 +148,7 @@ const saveCustomerSession = (user = {}, tokenValue = "") => {
   localStorage.setItem("userPhone", safeUser.phone || safeUser.phoneNumber || "");
   localStorage.setItem("userAadhaar", safeUser.aadhaarNumber || "");
   localStorage.setItem("userPan", safeUser.panNumber || "");
+  localStorage.setItem("accountNumber", safeUser.accountNumber || "");
   localStorage.setItem("user", JSON.stringify(safeUser));
   localStorage.setItem("finsecure_user", JSON.stringify(safeUser));
 
@@ -153,10 +157,42 @@ const saveCustomerSession = (user = {}, tokenValue = "") => {
 
 const cleanText = (value) => String(value || "").trim().toLowerCase();
 
+const normalizeRole = (role = "") => {
+  return String(role || "")
+    .toLowerCase()
+    .trim()
+    .replace(/_/g, " ")
+    .replace(/-/g, " ");
+};
+
+const isAdminLikeRole = (role = "") => {
+  return [
+    "admin",
+    "super",
+    "super admin",
+    "superadmin",
+    "super administrator",
+    "branch manager",
+    "manager",
+    "staff",
+    "cashier",
+    "loan officer",
+    "loan manager",
+    "customer support",
+    "customer support executive",
+    "support executive",
+    "relationship manager",
+    "admin officer",
+    "fraud analyst",
+    "report analyst",
+    "reports analyst",
+  ].includes(normalizeRole(role));
+};
+
 const cleanNumber = (value) => {
   const numberValue = Number(
     String(value || "0")
-      .replace(/₹/g, "")
+      .replace(/â‚¹/g, "")
       .replace(/,/g, "")
       .trim()
   );
@@ -184,22 +220,29 @@ const normalizeArrayResponse = (result) => {
 function Dashboard() {
   const [isLogin, setIsLogin] = useState(true);
   const [token, setToken] = useState(() => {
-  const savedRole = localStorage.getItem("role");
-  const savedToken = localStorage.getItem("token");
+    const savedRole = localStorage.getItem("role") || "";
+    const savedToken =
+      localStorage.getItem("finsecure_token") ||
+      localStorage.getItem("token") ||
+      "";
 
-  if (window.location.pathname === "/customer" && savedRole === "admin") {
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    localStorage.removeItem("userName");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("userPhone");
-    localStorage.removeItem("userAadhaar");
-    localStorage.removeItem("userPan");
-    return null;
-  }
+    if (
+      ["/customer", "/dashboard"].includes(window.location.pathname) &&
+      isAdminLikeRole(savedRole)
+    ) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("finsecure_token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("userName");
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("userPhone");
+      localStorage.removeItem("userAadhaar");
+      localStorage.removeItem("userPan");
+      return null;
+    }
 
-  return savedToken;
-});
+    return savedToken || null;
+  });
   const [message, setMessage] = useState("");
 
   const [dashboard, setDashboard] = useState({
@@ -245,6 +288,14 @@ function Dashboard() {
   const customerPan = customer.panNumber || "N/A";
   const customerAadhaar = customer.aadhaarNumber || "N/A";
 
+  const customerQrToken =
+    customer.qrToken ||
+    (customerId && customerId !== "N/A" ? `CUSTOMER-${customerId}` : "");
+
+  const customerQrValue = customerQrToken
+    ? `FINSECURE-CUSTOMER:${customerQrToken}`
+    : "";
+
   const [authForm, setAuthForm] = useState({
     name: "",
     email: "",
@@ -254,6 +305,7 @@ function Dashboard() {
     aadhaarNumber: "",
     panNumber: "",
     branch: "",
+    ifsc: "",
   });
 
   const [profileForm, setProfileForm] = useState({
@@ -386,7 +438,7 @@ function Dashboard() {
           name: authForm.name,
           email: authForm.email,
           password: authForm.password,
-          role: authForm.role,
+          role: "customer",
           phone: authForm.phone,
           aadhaarNumber: authForm.aadhaarNumber,
           panNumber: authForm.panNumber.toUpperCase(),
@@ -532,39 +584,10 @@ function Dashboard() {
     }
   };
 
-  const loadDashboard = async () => {
-    try {
-      const res = await fetch(`${API}/dashboard`, {
-        headers: getAuthHeaders(),
-      });
-
-      const result = await res.json();
-      const data = result?.data || result || {};
-
-      setDashboard({
-        totalIncome: cleanNumber(
-          data?.totalIncome ?? customerProfile?.totalIncome ?? customer?.totalIncome
-        ),
-        totalExpense: cleanNumber(
-          data?.totalExpense ?? customerProfile?.totalExpense ?? customer?.totalExpense
-        ),
-        balance: cleanNumber(
-          data?.balance ?? customerProfile?.balance ?? customer?.balance
-        ),
-      });
-    } catch {
-      setDashboard({
-        totalIncome: cleanNumber(customerProfile?.totalIncome || customer?.totalIncome),
-        totalExpense: cleanNumber(customerProfile?.totalExpense || customer?.totalExpense),
-        balance: cleanNumber(customerProfile?.balance || customer?.balance),
-      });
-    }
-  };
-
   const recalculateDashboardFromTransactions = (rows = []) => {
   const toNumber = (value) => {
     const clean = String(value || "")
-      .replace(/₹/g, "")
+      .replace(/â‚¹/g, "")
       .replace(/,/g, "")
       .replace(/\+/g, "")
       .trim();
@@ -611,21 +634,86 @@ function Dashboard() {
 };
 
   const loadTransactions = async () => {
-  try {
-    const res = await fetch(`${API}/transactions`, {
-      headers: getAuthHeaders(),
-    });
+    try {
+      const res = await fetch(`${API}/transactions`, {
+        headers: getAuthHeaders(),
+      });
 
-    const result = await res.json();
-    const data = normalizeArrayResponse(result);
+      const result = await res.json().catch(() => ({}));
 
-    setTransactions(data);
-    recalculateDashboardFromTransactions(data);
-  } catch {
-    setTransactions([]);
-    recalculateDashboardFromTransactions([]);
-  }
-};
+      if (!res.ok) {
+        throw new Error(result.message || "Unable to load transactions");
+      }
+
+      /*
+        The secured backend already returns only the logged-in customer's
+        transactions. The extra browser-side check below is defence in depth.
+      */
+      const allTransactions = normalizeArrayResponse(result);
+      const storedUser = getStoredUser();
+
+      const currentAccountNumber = String(
+        customerProfile?.accountNumber ||
+          storedUser?.accountNumber ||
+          customerAccountNumber ||
+          localStorage.getItem("accountNumber") ||
+          ""
+      )
+        .replace(/\s/g, "")
+        .toUpperCase();
+
+      const currentEmail = cleanText(
+        customerProfile?.email ||
+          storedUser?.email ||
+          userEmail ||
+          localStorage.getItem("userEmail")
+      );
+
+      const customerTransactions = allTransactions.filter((transaction) => {
+        const transactionAccountNumber = String(
+          transaction.accountNumber || transaction.accountNo || ""
+        )
+          .replace(/\s/g, "")
+          .toUpperCase();
+
+        const transactionEmail = cleanText(
+          transaction.userEmail ||
+            transaction.email ||
+            transaction.customerEmail
+        );
+
+        const accountMatches =
+          Boolean(currentAccountNumber && transactionAccountNumber) &&
+          currentAccountNumber === transactionAccountNumber;
+
+        const emailMatches =
+          Boolean(currentEmail && transactionEmail) &&
+          currentEmail === transactionEmail;
+
+        return accountMatches || emailMatches;
+      });
+
+      setTransactions(customerTransactions);
+
+      if (result?.summary) {
+        setDashboard({
+          totalIncome: cleanNumber(result.summary.totalIncome),
+          totalExpense: cleanNumber(result.summary.totalExpense),
+          balance: cleanNumber(result.summary.balance),
+        });
+      } else {
+        recalculateDashboardFromTransactions(customerTransactions);
+      }
+    } catch (error) {
+      console.error("Failed to load transactions:", error);
+      setTransactions([]);
+      setDashboard({
+        totalIncome: 0,
+        totalExpense: 0,
+        balance: 0,
+      });
+    }
+  };
 
   const loadProfile = async () => {
     try {
@@ -665,14 +753,10 @@ function Dashboard() {
         panNumber: savedUser.panNumber || "",
       });
 
-      setDashboard((prev) => ({
-        ...prev,
-        totalIncome: cleanNumber(savedUser.totalIncome ?? prev.totalIncome),
-        totalExpense: cleanNumber(savedUser.totalExpense ?? prev.totalExpense),
-        balance: cleanNumber(savedUser.balance ?? prev.balance),
-      }));
-    } catch {
-      console.log("Profile loading failed");
+      return savedUser;
+    } catch (error) {
+      console.error("Profile loading failed:", error);
+      return null;
     }
   };
 
@@ -781,8 +865,7 @@ function Dashboard() {
     });
 
     showToast("Transaction saved successfully");
-    loadDashboard();
-    loadTransactions();
+    await loadTransactions();
   } catch {
     alert("Cannot connect to backend");
   }
@@ -803,8 +886,7 @@ function Dashboard() {
       }
 
       showToast("Transaction deleted");
-      loadDashboard();
-      loadTransactions();
+      await loadTransactions();
     } catch {
       alert("Cannot connect to backend");
     }
@@ -872,6 +954,15 @@ function Dashboard() {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({
+        customer: userName,
+        customerName: userName,
+        userEmail,
+        email: userEmail,
+        accountNumber: customerAccountNumber,
+        customerId,
+        branch: customerBranch,
+        ifsc: customerIFSC,
+        cif: customerCIF,
         amount: transferAmount,
         type: "expense",
         category: "Fund Transfer",
@@ -880,6 +971,10 @@ function Dashboard() {
           `Transfer to ${transferForm.beneficiaryName}`,
         paymentMethod: transferForm.transferType,
         date: new Date().toISOString().split("T")[0],
+        time: new Date().toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
         status: "Completed",
         beneficiaryName: transferForm.beneficiaryName,
         beneficiaryAccount: transferForm.beneficiaryAccount,
@@ -922,8 +1017,7 @@ function Dashboard() {
 
     setShowTransferForm(false);
     showToast("Fund transfer successful");
-    loadDashboard();
-    loadTransactions();
+    await loadTransactions();
   } catch {
     alert("Cannot connect to backend");
   }
@@ -1273,13 +1367,26 @@ function Dashboard() {
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    localStorage.removeItem("userName");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("userPhone");
-    localStorage.removeItem("userAadhaar");
-    localStorage.removeItem("userPan");
+    [
+      "token",
+      "finsecure_token",
+      "finsecure_user",
+      "finsecure_customer",
+      "customer",
+      "customerData",
+      "user",
+      "currentUser",
+      "role",
+      "userRole",
+      "isAuthenticated",
+      "isLoggedIn",
+      "userName",
+      "userEmail",
+      "userPhone",
+      "userAadhaar",
+      "userPan",
+      "accountNumber",
+    ].forEach((key) => localStorage.removeItem(key));
 
     setToken(null);
     window.location.href = "/";
@@ -1297,16 +1404,20 @@ function Dashboard() {
     if (token) {
       const role = localStorage.getItem("role");
 
-      if (role === "admin" && window.location.pathname !== "/customer") {
+      if (isAdminLikeRole(role)) {
         window.location.href = "/admin";
         return;
       }
 
       loadBranches();
-      loadDashboard();
-      loadTransactions();
-      loadProfile();
-      loadLoanApplications();
+
+      const loadCustomerData = async () => {
+        await loadProfile();
+        await loadTransactions();
+        await loadLoanApplications();
+      };
+
+      loadCustomerData();
     }
   }, [token]);
 
@@ -1455,7 +1566,22 @@ function Dashboard() {
                     <select
                       name="branch"
                       value={authForm.branch}
-                      onChange={handleAuthChange}
+                      onChange={(event) => {
+                        const selectedBranchName = event.target.value;
+                        const selectedBranch = branches.find(
+                          (branch) => branch.name === selectedBranchName
+                        );
+
+                        setAuthForm({
+                          ...authForm,
+                          branch: selectedBranchName,
+                          ifsc:
+                            selectedBranch?.ifsc ||
+                            selectedBranch?.ifscCode ||
+                            selectedBranch?.code ||
+                            "",
+                        });
+                      }}
                       style={styles.authInput}
                       required
                     >
@@ -1501,12 +1627,12 @@ function Dashboard() {
                 <AuthInput icon={Crown}>
                   <select
                     name="role"
-                    value={authForm.role}
-                    onChange={handleAuthChange}
+                    value="customer"
+                    onChange={() => {}}
                     style={styles.authInput}
+                    disabled
                   >
                     <option value="customer">Customer</option>
-                    <option value="admin">Admin</option>
                   </select>
                 </AuthInput>
               )}
@@ -1575,7 +1701,7 @@ function Dashboard() {
           </div>
         </div>
 
-        <div style={styles.ornament}>◇────◇</div>
+        <div style={styles.ornament}>â—‡â”€â”€â”€â”€â—‡</div>
 
         <nav style={styles.nav}>
           {navItems.map(([key, Icon, label]) => (
@@ -1651,11 +1777,11 @@ function Dashboard() {
               {showNotifications && (
                 <div style={styles.dropdownBox}>
                   <h3>Notifications</h3>
-                  <p>✅ Welcome back, {userName}</p>
-                  <p>🔐 Your account is secure</p>
-                  <p>💰 Balance: {formatMoney(dashboard.balance)}</p>
-                  <p>📊 Transactions: {transactions.length}</p>
-                  <p>💎 Investments: {currentInvestments.length}</p>
+                  <p>âœ… Welcome back, {userName}</p>
+                  <p>ðŸ” Your account is secure</p>
+                  <p>ðŸ’° Balance: {formatMoney(dashboard.balance)}</p>
+                  <p>ðŸ“Š Transactions: {transactions.length}</p>
+                  <p>ðŸ’Ž Investments: {currentInvestments.length}</p>
                 </div>
               )}
             </div>
@@ -1697,7 +1823,7 @@ function Dashboard() {
                 <SummaryCard
                   title="Total Income"
                   value={formatMoney(dashboard.totalIncome)}
-                  trend="▲ This Month"
+                  trend="â–² This Month"
                   icon={BarChart3}
                   variant="green"
                 />
@@ -1705,7 +1831,7 @@ function Dashboard() {
                 <SummaryCard
                   title="Total Expense"
                   value={formatMoney(dashboard.totalExpense)}
-                  trend="▼ This Month"
+                  trend="â–¼ This Month"
                   icon={PieChart}
                   variant="red"
                 />
@@ -1743,7 +1869,7 @@ function Dashboard() {
                         value={entryForm.amount}
                         onChange={handleEntryChange}
                         type="number"
-                        placeholder="₹ 0.00"
+                        placeholder="â‚¹ 0.00"
                         style={styles.input}
                       />
                     </Field>
@@ -1950,7 +2076,7 @@ function Dashboard() {
                       <span>--</span>
                     </div>
 
-                    <p>Add branches from Admin Portal → Branches.</p>
+                    <p>Add branches from Admin Portal â†’ Branches.</p>
                   </div>
                 ) : (
                   branches.map((branch) => (
@@ -2718,16 +2844,85 @@ function Dashboard() {
                 <strong>Balance:</strong> {formatMoney(dashboard.balance)}
               </p>
               <p>
-                <strong>Investments:</strong>{" "}
-                {formatMoney(totalInvestmentValue)}
-              </p>
+  <strong>Investments:</strong>{" "}
+  {formatMoney(totalInvestmentValue)}
+</p>
 
-              <button
-                style={styles.goldBtn}
-                onClick={() => setShowAccountDetails(false)}
-              >
-                Close
-              </button>
+<div
+  style={{
+    marginTop: "22px",
+    marginBottom: "22px",
+    padding: "20px",
+    border: "1px solid rgba(212, 175, 55, 0.65)",
+    borderRadius: "16px",
+    background: "rgba(255, 255, 255, 0.04)",
+    textAlign: "center",
+  }}
+>
+  <h3
+    style={{
+      marginTop: 0,
+      marginBottom: "8px",
+      color: "#f4d06f",
+    }}
+  >
+    My Unique Customer QR
+  </h3>
+
+  <p
+    style={{
+      marginTop: 0,
+      marginBottom: "16px",
+      fontSize: "13px",
+      color: "#cbd5e1",
+    }}
+  >
+    Scan this QR code to identify your FinSecure account.
+  </p>
+
+  {customerQrValue ? (
+    <div
+      style={{
+        display: "inline-flex",
+        padding: "14px",
+        background: "#ffffff",
+        borderRadius: "12px",
+      }}
+    >
+      <QRCodeSVG
+        value={customerQrValue}
+        size={190}
+        level="H"
+        marginSize={2}
+        bgColor="#ffffff"
+        fgColor="#061126"
+        title={`${userName} FinSecure customer QR`}
+      />
+    </div>
+  ) : (
+    <p style={{ color: "#fca5a5" }}>
+      QR code is not available for this account.
+    </p>
+  )}
+
+  <p
+    style={{
+      marginTop: "14px",
+      marginBottom: 0,
+      fontSize: "12px",
+      color: "#94a3b8",
+    }}
+  >
+    Account: {maskAccountNumber(customerAccountNumber)}
+  </p>
+</div>
+
+<button
+  style={styles.goldBtn}
+  onClick={() => setShowAccountDetails(false)}
+>
+  Close
+</button>
             </div>
           </div>
         )}
@@ -2844,7 +3039,7 @@ function SummaryCard({ title, value, trend, icon: Icon, variant }) {
         <small style={styles.smallGold}>{trend}</small>
       </div>
 
-      <span style={styles.dots}>⋮</span>
+      <span style={styles.dots}>â‹®</span>
     </div>
   );
 }
@@ -4368,17 +4563,69 @@ backgroundAttachment: "fixed",
     zIndex: 99999,
   },
 
-  modalBox: {
-    width: "520px",
-    maxWidth: "90vw",
-    background:
-      "linear-gradient(145deg, rgba(4,15,34,0.98), rgba(2,8,23,0.98))",
-    border: "1px solid rgba(212,175,55,0.65)",
-    borderRadius: "18px",
-    padding: "26px",
-    color: "#f8fafc",
-    boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+  customerQrSection: {
+    margin: "22px 0",
+    padding: "20px",
+    border: "1px solid rgba(212,175,55,0.55)",
+    borderRadius: "16px",
+    background: "rgba(255,255,255,0.035)",
+    textAlign: "center",
   },
+
+  customerQrTitle: {
+    margin: "0 0 16px",
+    color: "#f7d28b",
+  },
+
+  customerQrBox: {
+    width: "fit-content",
+    margin: "0 auto",
+    padding: "12px",
+    borderRadius: "14px",
+    background: "#ffffff",
+    lineHeight: 0,
+  },
+
+  customerQrHelp: {
+    margin: "14px auto 0",
+    maxWidth: "390px",
+    color: "#cbd5e1",
+    fontSize: "13px",
+    lineHeight: 1.6,
+  },
+
+  customerQrId: {
+    margin: "10px 0 0",
+    color: "#f7d28b",
+    fontSize: "12px",
+    overflowWrap: "anywhere",
+  },
+
+  modalOverlay: {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.72)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "20px",
+  zIndex: 99999,
+  overflowY: "auto",
+},
+
+modalBox: {
+  width: "520px",
+  maxWidth: "90vw",
+  maxHeight: "85vh",
+  overflowY: "auto",
+  background:
+    "linear-gradient(145deg, rgba(4,15,34,0.98), rgba(2,8,23,0.98))",
+  border: "1px solid rgba(212,175,55,0.65)",
+  borderRadius: "18px",
+  padding: "26px",
+  color: "#f8fafc",
+  boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+},
 
   emptyText: {
     color: "#e5e7eb",
