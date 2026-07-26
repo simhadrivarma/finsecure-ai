@@ -1,4 +1,4 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 const mongoose = require("mongoose");
 
 const UserSchema = new mongoose.Schema(
@@ -28,6 +28,13 @@ const UserSchema = new mongoose.Schema(
       default: "customer",
     },
 
+    accountNumber: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
+
     phone: {
       type: String,
       default: "",
@@ -50,4 +57,5 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.models.User || mongoose.model("User", UserSchema);
+module.exports =
+  mongoose.models.User || mongoose.model("User", UserSchema);
