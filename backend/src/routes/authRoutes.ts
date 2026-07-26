@@ -4,8 +4,9 @@ const jwt = require("jsonwebtoken");
 
 const router = express.Router();
 
-let User: any;
-let Admin: any;
+let User: any = null;
+let Customer: any = null;
+let Admin: any = null;
 
 try {
   User = require("../models/User");
@@ -15,6 +16,12 @@ try {
   } catch {
     User = null;
   }
+}
+
+try {
+  Customer = require("../models/Customer");
+} catch {
+  Customer = null;
 }
 
 try {
@@ -43,16 +50,17 @@ const cleanUser = (user: any) => {
   return obj;
 };
 
-/* CUSTOMER / USER REGISTER */
+const generateAccountNumber = () => {
+  return String(Date.now()).slice(-10) + Math.floor(Math.random() * 1000);
+};
+
+const generateCif = () => {
+  return `CIF${Date.now().toString().slice(-8)}`;
+};
+
+/* CUSTOMER REGISTER */
 router.post("/register", async (req: any, res: any) => {
   try {
-    if (!User) {
-      return res.status(500).json({
-        success: false,
-        message: "User model not found. Please check backend/src/models/User.ts",
-      });
-    }
-
     const {
       name,
       email,
@@ -79,9 +87,22 @@ router.post("/register", async (req: any, res: any) => {
 
     const normalizedEmail = String(email).toLowerCase().trim();
 
-    const existingUser = await User.findOne({ email: normalizedEmail });
+    let existingUser = null;
+    let existingCustomer = null;
 
-    if (existingUser) {
+    if (User) {
+      existingUser = await User.findOne({ email: normalizedEmail }).select(
+        "+password"
+      );
+    }
+
+    if (Customer) {
+      existingCustomer = await Customer.findOne({
+        email: normalizedEmail,
+      }).select("+password");
+    }
+
+    if (existingUser || existingCustomer) {
       return res.status(409).json({
         success: false,
         message: "Account already exists with this email",
@@ -90,18 +111,60 @@ router.post("/register", async (req: any, res: any) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await User.create({
-      name: String(name).trim(),
-      email: normalizedEmail,
-      password: hashedPassword,
-      role: role || "customer",
-      phone: phone || "",
-      aadhaarNumber: aadhaarNumber || "",
-      panNumber: panNumber ? String(panNumber).toUpperCase() : "",
-    });
+    let createdUser = null;
 
-    const token = createToken(user);
-    const safeUser = cleanUser(user);
+    if (User) {
+      createdUser = await User.create({
+        name: String(name).trim(),
+        email: normalizedEmail,
+        password: hashedPassword,
+        role: role || "customer",
+        phone: phone || "",
+        aadhaarNumber: aadhaarNumber || "",
+        panNumber: panNumber ? String(panNumber).toUpperCase() : "",
+      });
+    }
+
+    if (Customer) {
+      await Customer.create({
+        id: `CUS${Date.now()}`,
+        name: String(name).trim(),
+        customerName: String(name).trim(),
+        email: normalizedEmail,
+        password: hashedPassword,
+        role: role || "customer",
+        phone: phone || "",
+        phoneNumber: phone || "",
+        aadhaarNumber: aadhaarNumber || "",
+        panNumber: panNumber ? String(panNumber).toUpperCase() : "",
+        accountNumber: generateAccountNumber(),
+        accountType: "Savings Account",
+        ifsc: "FINS0001001",
+        ifscCode: "FINS0001001",
+        cif: generateCif(),
+        cifNumber: generateCif(),
+        balance: 0,
+        totalIncome: 0,
+        totalExpense: 0,
+        branch: "Main Branch",
+        kyc: "Pending",
+        status: "Active",
+      });
+    }
+
+    const finalUser =
+      createdUser || {
+        _id: Date.now().toString(),
+        name,
+        email: normalizedEmail,
+        role: role || "customer",
+        phone,
+        aadhaarNumber,
+        panNumber,
+      };
+
+    const token = createToken(finalUser);
+    const safeUser = cleanUser(finalUser);
 
     return res.status(201).json({
       success: true,
@@ -118,7 +181,7 @@ router.post("/register", async (req: any, res: any) => {
   }
 });
 
-/* LOGIN FOR CUSTOMER + ADMIN */
+/* ADMIN + CUSTOMER LOGIN */
 router.post("/login", async (req: any, res: any) => {
   try {
     const { email, password } = req.body;
@@ -136,16 +199,36 @@ router.post("/login", async (req: any, res: any) => {
     let accountType = "customer";
 
     if (User) {
-      account = await User.findOne({ email: normalizedEmail });
-      accountType = account?.role || "customer";
+      account = await User.findOne({ email: normalizedEmail }).select(
+        "+password"
+      );
+
+      if (account) {
+        accountType = account.role || "customer";
+      }
+    }
+
+    if (!account && Customer) {
+      account = await Customer.findOne({ email: normalizedEmail }).select(
+        "+password"
+      );
+
+      if (account) {
+        accountType = "customer";
+      }
     }
 
     if (!account && Admin) {
-      account = await Admin.findOne({ email: normalizedEmail });
-      accountType = account?.role || "admin";
+      account = await Admin.findOne({ email: normalizedEmail }).select(
+        "+password"
+      );
+
+      if (account) {
+        accountType = account.role || "admin";
+      }
     }
 
-    if (!account) {
+    if (!account || !account.password) {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
