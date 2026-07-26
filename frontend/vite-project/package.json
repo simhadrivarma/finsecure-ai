@@ -12,6 +12,7 @@
   "dependencies": {
     "@vitejs/plugin-react": "latest",
     "lucide-react": "^1.16.0",
+    "qrcode.react": "^4.2.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "vite": "latest"
