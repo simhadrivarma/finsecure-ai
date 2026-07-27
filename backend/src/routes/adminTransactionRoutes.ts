@@ -1,403 +1,34 @@
+// @ts-nocheck
+
 const express = require("express");
 const mongoose = require("mongoose");
 const AdminTransaction = require("../models/AdminTransaction");
-
-let Customer: any = null;
-
-try {
-  Customer = require("../models/Customer");
-} catch {
-  Customer = null;
-}
-
-const authMiddleware = require("../middleware/authMiddleware");
-const protectAdmin = authMiddleware.protectAdmin || authMiddleware;
-
-console.log("✅ SECURE ADMIN TRANSACTION ROUTES LOADED");
+const Customer = require("../models/Customer");
+const auth = require("../middleware/authMiddleware");
 
 const router = express.Router();
+const protectAdmin = auth.protectAdmin || auth;
+const requirePermission = auth.requirePermission;
+const mergeFilters = auth.mergeFilters;
+const normalizeRole = auth.normalizeRole;
+const isFullAdminRole = auth.isFullAdminRole;
+const { buildScopedRecordFilter } = require("../utils/accessScope");
 
-const generateTransactionId = () => {
-  return `TRN${Date.now()}`;
-};
+const generateTransactionId = () => `TRN${Date.now()}${Math.floor(100 + Math.random() * 900)}`;
 
-const normalizeText = (value: any) => {
-  return String(value || "").toLowerCase().trim();
-};
-
-const normalizeRole = (role: any) => {
-  return normalizeText(role).replace(/_/g, " ").replace(/-/g, " ");
-};
-
-const isSuperAdmin = (role: any) => {
-  const cleanRole = normalizeRole(role);
-
-  return (
-    cleanRole === "super admin" ||
-    cleanRole === "superadmin" ||
-    cleanRole === "super"
-  );
-};
-
-const isAdmin = (role: any) => {
-  const cleanRole = normalizeRole(role);
-  return isSuperAdmin(cleanRole) || cleanRole === "admin";
-};
-
-const canViewTransactions = (role: any) => {
-  const cleanRole = normalizeRole(role);
-
-  return [
-    "super admin",
-    "superadmin",
-    "super",
-    "admin",
-    "branch manager",
-    "manager",
-    "cashier",
-    "customer support",
-    "customer support executive",
-    "fraud analyst",
-    "staff",
-  ].includes(cleanRole);
-};
-
-const canWriteTransactions = (role: any) => {
-  const cleanRole = normalizeRole(role);
-
-  return [
-    "super admin",
-    "superadmin",
-    "super",
-    "admin",
-    "branch manager",
-    "manager",
-    "cashier",
-  ].includes(cleanRole);
-};
-
-const canDeleteTransactions = (role: any) => {
-  const cleanRole = normalizeRole(role);
-
-  return [
-    "super admin",
-    "superadmin",
-    "super",
-    "admin",
-    "branch manager",
-    "manager",
-  ].includes(cleanRole);
-};
+const anyIdFilter = (id: string) => ({
+  $or: [
+    { id },
+    { transactionId: id },
+    { ref: id },
+    { reference: id },
+    ...(mongoose.Types.ObjectId.isValid(id) ? [{ _id: id }] : []),
+  ],
+});
 
 const moneyToNumber = (value: any) => {
-  const clean = String(value || "")
-    .replace(/₹/g, "")
-    .replace(/,/g, "")
-    .replace(/\+/g, "")
-    .trim();
-
-  if (clean === "") return 0;
-
-  const numberValue = Number(clean);
-  return Number.isNaN(numberValue) ? NaN : numberValue;
-};
-
-const cleanMoney = (value: any) => {
-  const numberValue = moneyToNumber(value);
-
-  if (Number.isNaN(numberValue)) {
-    return value;
-  }
-
-  return `₹${numberValue.toLocaleString("en-IN")}`;
-};
-
-const getErrorMessage = (error: any) => {
-  if (error?.name === "ValidationError") {
-    const firstError = Object.values(error.errors || {})[0] as any;
-    return firstError?.message || "Validation failed";
-  }
-
-  if (error?.code === 11000) {
-    return "Duplicate transaction data found";
-  }
-
-  return error?.message || "Something went wrong";
-};
-
-const isValidDate = (value: any) => {
-  if (!String(value || "").trim()) return false;
-
-  const date = new Date(value);
-  return !Number.isNaN(date.getTime());
-};
-
-const isValidTime = (value: any) => {
-  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || "").trim());
-};
-
-const noAccessFilter = () => {
-  return { id: "__NO_ACCESS__" };
-};
-
-const sanitizeAccessFilter = (filter: any) => {
-  if (!filter || Object.keys(filter).length === 0) return {};
-
-  if (filter._id === "__NO_ACCESS__") {
-    return noAccessFilter();
-  }
-
-  return filter;
-};
-
-const mergeFilters = (baseFilter: any, accessFilter: any) => {
-  const cleanBase = baseFilter || {};
-  const cleanAccess = sanitizeAccessFilter(accessFilter || {});
-
-  if (Object.keys(cleanBase).length === 0) return cleanAccess;
-  if (Object.keys(cleanAccess).length === 0) return cleanBase;
-
-  return {
-    $and: [cleanBase, cleanAccess],
-  };
-};
-
-const getAdminBranchValues = (admin: any) => {
-  return [
-    admin?.branch,
-    admin?.branchName,
-    admin?.assignedBranch,
-    admin?.branchCode,
-    admin?.branchId,
-  ]
-    .filter(Boolean)
-    .map(normalizeText);
-};
-
-const getAdminIfscValues = (admin: any) => {
-  return [admin?.ifsc, admin?.ifscCode, admin?.IFSC]
-    .filter(Boolean)
-    .map(normalizeText);
-};
-
-const buildDirectBranchTransactionFilter = (admin: any) => {
-  const adminBranches = getAdminBranchValues(admin);
-  const adminIfscList = getAdminIfscValues(admin);
-
-  const orConditions: any[] = [];
-
-  adminBranches.forEach((branch: string) => {
-    orConditions.push({ branch });
-    orConditions.push({ branchName: branch });
-    orConditions.push({ assignedBranch: branch });
-    orConditions.push({ branchCode: branch });
-    orConditions.push({ branchId: branch });
-  });
-
-  adminIfscList.forEach((ifsc: string) => {
-    orConditions.push({ ifsc });
-    orConditions.push({ ifscCode: ifsc });
-    orConditions.push({ IFSC: ifsc });
-    orConditions.push({ beneficiaryIfsc: ifsc });
-  });
-
-  return orConditions;
-};
-
-const getBranchCustomerIdentifiers = async (admin: any) => {
-  if (!Customer) {
-    return {
-      emails: [],
-      accounts: [],
-      phones: [],
-      names: [],
-      ids: [],
-    };
-  }
-
-  const adminBranches = getAdminBranchValues(admin);
-  const adminIfscList = getAdminIfscValues(admin);
-
-  const customerOr: any[] = [];
-
-  adminBranches.forEach((branch: string) => {
-    customerOr.push({ branch });
-    customerOr.push({ branchName: branch });
-    customerOr.push({ assignedBranch: branch });
-    customerOr.push({ branchCode: branch });
-    customerOr.push({ branchId: branch });
-  });
-
-  adminIfscList.forEach((ifsc: string) => {
-    customerOr.push({ ifsc });
-    customerOr.push({ ifscCode: ifsc });
-    customerOr.push({ IFSC: ifsc });
-  });
-
-  if (!customerOr.length) {
-    return {
-      emails: [],
-      accounts: [],
-      phones: [],
-      names: [],
-      ids: [],
-    };
-  }
-
-  const customers = await Customer.find({ $or: customerOr })
-    .select(
-      "id customerId name customerName email customerEmail userEmail phone phoneNumber accountNumber accountNo cif cifNumber"
-    )
-    .lean();
-
-  const emails = new Set<string>();
-  const accounts = new Set<string>();
-  const phones = new Set<string>();
-  const names = new Set<string>();
-  const ids = new Set<string>();
-
-  customers.forEach((customer: any) => {
-    [
-      customer.email,
-      customer.customerEmail,
-      customer.userEmail,
-    ].forEach((value) => value && emails.add(String(value).toLowerCase()));
-
-    [
-      customer.accountNumber,
-      customer.accountNo,
-    ].forEach((value) => value && accounts.add(String(value)));
-
-    [
-      customer.phone,
-      customer.phoneNumber,
-    ].forEach((value) => value && phones.add(String(value)));
-
-    [
-      customer.name,
-      customer.customerName,
-    ].forEach((value) => value && names.add(String(value)));
-
-    [
-      customer.id,
-      customer.customerId,
-    ].forEach((value) => value && ids.add(String(value)));
-  });
-
-  return {
-    emails: Array.from(emails),
-    accounts: Array.from(accounts),
-    phones: Array.from(phones),
-    names: Array.from(names),
-    ids: Array.from(ids),
-  };
-};
-
-const buildTransactionAccessFilter = async (req: any) => {
-  const role = req.admin?.role;
-
-  if (isAdmin(role)) {
-    return {};
-  }
-
-  if (!canViewTransactions(role)) {
-    return noAccessFilter();
-  }
-
-  const orConditions: any[] = [];
-
-  orConditions.push(...buildDirectBranchTransactionFilter(req.admin));
-
-  const identifiers = await getBranchCustomerIdentifiers(req.admin);
-
-  if (identifiers.emails.length) {
-    orConditions.push({ email: { $in: identifiers.emails } });
-    orConditions.push({ customerEmail: { $in: identifiers.emails } });
-    orConditions.push({ userEmail: { $in: identifiers.emails } });
-  }
-
-  if (identifiers.accounts.length) {
-    orConditions.push({ accountNumber: { $in: identifiers.accounts } });
-    orConditions.push({ accountNo: { $in: identifiers.accounts } });
-    orConditions.push({ fromAccount: { $in: identifiers.accounts } });
-  }
-
-  if (identifiers.phones.length) {
-    orConditions.push({ phone: { $in: identifiers.phones } });
-    orConditions.push({ phoneNumber: { $in: identifiers.phones } });
-  }
-
-  if (identifiers.names.length) {
-    orConditions.push({ customer: { $in: identifiers.names } });
-    orConditions.push({ customerName: { $in: identifiers.names } });
-    orConditions.push({ name: { $in: identifiers.names } });
-  }
-
-  if (identifiers.ids.length) {
-    orConditions.push({ customerId: { $in: identifiers.ids } });
-    orConditions.push({ customerID: { $in: identifiers.ids } });
-  }
-
-  if (!orConditions.length) {
-    return noAccessFilter();
-  }
-
-  return { $or: orConditions };
-};
-
-const validateAdminBranchAccessForPayload = async (req: any, payload: any) => {
-  const role = req.admin?.role;
-
-  if (isAdmin(role)) return "";
-
-  const accessFilter = await buildTransactionAccessFilter(req);
-
-  if (!accessFilter || Object.keys(accessFilter).length === 0) return "";
-
-  const accessFilterAny: any = accessFilter;
-
-if (accessFilterAny.id === "__NO_ACCESS__") {
-  return "Your admin account has no branch assigned. Please contact Super Admin.";
-}
-
-  const checks: any[] = [];
-
-  if (payload.branch) checks.push({ branch: payload.branch });
-  if (payload.branchName) checks.push({ branchName: payload.branchName });
-  if (payload.ifsc) checks.push({ ifsc: payload.ifsc });
-  if (payload.ifscCode) checks.push({ ifscCode: payload.ifscCode });
-  if (payload.accountNumber) checks.push({ accountNumber: payload.accountNumber });
-  if (payload.email) checks.push({ email: payload.email });
-  if (payload.customerEmail) checks.push({ customerEmail: payload.customerEmail });
-  if (payload.userEmail) checks.push({ userEmail: payload.userEmail });
-  if (payload.customer) checks.push({ customer: payload.customer });
-  if (payload.customerName) checks.push({ customerName: payload.customerName });
-
-  if (!checks.length) {
-    return "Access denied. Transaction must include customer/account/branch details.";
-  }
-
-  const matchingFilter = mergeFilters({ $or: checks }, accessFilter);
-
-  const matchingTransaction = await AdminTransaction.findOne(matchingFilter)
-    .select("id")
-    .lean();
-
-  if (matchingTransaction) return "";
-
-  const allowedCustomerFilter = mergeFilters(
-    {
-      $or: checks,
-    },
-    await buildTransactionAccessFilter(req)
-  );
-
-  if (Customer) {
-    const customer = await Customer.findOne(allowedCustomerFilter).select("id").lean();
-    if (customer) return "";
-  }
-
-  return "Access denied. You can manage transactions only for your assigned branch.";
+  const amount = Number(String(value ?? "").replace(/₹/g, "").replace(/,/g, "").replace(/\+/g, "").trim() || 0);
+  return Number.isFinite(amount) ? amount : 0;
 };
 
 const calculateRisk = (transaction: any) => {
@@ -418,602 +49,236 @@ const calculateRisk = (transaction: any) => {
     score += 15;
     reasons.push("Large transaction amount");
   }
-
   if (status === "Flagged") {
     score += 40;
     reasons.push("Transaction status is flagged");
   }
-
   if (status === "Failed") {
     score += 25;
     reasons.push("Transaction failed");
   }
-
   if (["RTGS", "IMPS"].includes(type) && amount >= 500000) {
     score += 15;
     reasons.push("High-value fast transfer method");
   }
-
-  if (isValidTime(time)) {
+  if (/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
     const hour = Number(time.split(":")[0]);
-
     if (hour >= 22 || hour < 5) {
       score += 20;
-      reasons.push("Transaction happened during unusual night hours");
+      reasons.push("Transaction occurred during unusual night hours");
     }
   }
 
-  if (score > 100) {
-    score = 100;
-  }
-
-  let risk = "Normal";
-
-  if (score >= 70) {
-    risk = "High";
-  } else if (score >= 40) {
-    risk = "Medium";
-  } else if (score >= 15) {
-    risk = "Low";
-  }
-
-  if (reasons.length === 0) {
-    reasons.push("No major risk detected");
-  }
-
-  return {
-    risk,
-    riskScore: score,
-    riskReasons: reasons,
-  };
+  score = Math.min(score, 100);
+  const risk = score >= 70 ? "High" : score >= 40 ? "Medium" : score >= 15 ? "Low" : "Normal";
+  if (!reasons.length) reasons.push("No major risk detected");
+  return { risk, riskScore: score, riskReasons: reasons };
 };
 
-const validateTransaction = (body: any, isEdit = false) => {
-  const customer = body.customer || body.customerName || body.name;
-  const accountNumber = body.accountNumber;
-  const type = body.type;
-  const amount = body.amount;
-  const date = body.date;
-  const time = body.time;
-  const status = body.status;
-  const risk = body.risk;
-
-  if (!isEdit || customer !== undefined) {
-    if (!String(customer || "").trim()) {
-      return "Customer name is required";
-    }
-  }
-
-  if (!isEdit || accountNumber !== undefined) {
-    const digits = String(accountNumber || "").replace(/\D/g, "");
-
-    if (!digits) {
-      return "Account number is required";
-    }
-
-    if (digits.length < 9 || digits.length > 18) {
-      return "Account number must be 9 to 18 digits";
-    }
-  }
-
-  if (!isEdit || type !== undefined) {
-    if (!String(type || "").trim()) {
-      return "Transaction type is required";
-    }
-  }
-
-  if (!isEdit || amount !== undefined) {
-    const numberValue = moneyToNumber(amount);
-
-    if (Number.isNaN(numberValue)) {
-      return "Amount must be a valid number";
-    }
-
-    if (numberValue <= 0) {
-      return "Amount must be greater than 0";
-    }
-  }
-
-  if (!isEdit || date !== undefined) {
-    if (!isValidDate(date)) {
-      return "Transaction date is required";
-    }
-  }
-
-  if (!isEdit || time !== undefined) {
-    if (!isValidTime(time)) {
-      return "Transaction time must be in HH:MM format";
-    }
-  }
-
-  if (status !== undefined) {
-    const allowedStatus = ["Success", "Pending", "Failed", "Flagged"];
-
-    if (!allowedStatus.includes(status)) {
-      return "Invalid transaction status";
-    }
-  }
-
-  if (risk !== undefined) {
-    const allowedRisk = ["Normal", "Low", "Medium", "High"];
-
-    if (!allowedRisk.includes(risk)) {
-      return "Invalid transaction risk";
-    }
-  }
-
-  return "";
+const suspiciousFilter = {
+  $or: [
+    { risk: { $in: ["Medium", "High"] } },
+    { status: { $in: ["Flagged", "Failed"] } },
+    { fraudStatus: { $in: ["Under Review", "Confirmed"] } },
+  ],
 };
 
-const normalizeTransactionPayload = (body: any) => {
-  const payload: any = { ...body };
+const getTransactionAccessFilter = async (req: any) => {
+  const branchScope = await buildScopedRecordFilter(req, "transactions");
+  return normalizeRole(req.admin?.role) === "fraud analyst"
+    ? mergeFilters(branchScope, suspiciousFilter)
+    : branchScope;
+};
 
-  payload.customer = String(
-    payload.customer || payload.customerName || payload.name || ""
-  ).trim();
+const findCustomer = async (payload: any) => {
+  const or: any[] = [];
+  if (payload.accountNumber) or.push({ accountNumber: String(payload.accountNumber).toUpperCase() }, { accountNo: String(payload.accountNumber).toUpperCase() });
+  if (payload.customerId) or.push({ id: payload.customerId }, { customerId: payload.customerId });
+  if (payload.email) or.push({ email: String(payload.email).toLowerCase() });
+  return or.length ? Customer.findOne({ $or: or }).select("-password").lean() : null;
+};
 
-  payload.customerName = String(
-    payload.customerName || payload.customer || ""
-  ).trim();
+const cleanPayload = (body: any, role: any) => {
+  const normalizedRole = normalizeRole(role);
+  let allowed = [
+    "customer", "customerName", "customerId", "email", "customerEmail", "userEmail", "phone",
+    "accountNumber", "accountNo", "fromAccount", "branch", "branchName", "branchCode", "branchId", "ifsc", "ifscCode", "cif",
+    "type", "amount", "category", "description", "paymentMethod", "date", "time", "ref", "reference", "status",
+    "fraudStatus", "fraudNotes"
+  ];
 
-  payload.email = String(
-    payload.email || payload.customerEmail || payload.userEmail || ""
-  )
-    .toLowerCase()
-    .trim();
-
-  payload.customerEmail = String(
-    payload.customerEmail || payload.email || payload.userEmail || ""
-  )
-    .toLowerCase()
-    .trim();
-
-  payload.userEmail = String(
-    payload.userEmail || payload.email || payload.customerEmail || ""
-  )
-    .toLowerCase()
-    .trim();
-
-  if (payload.phone !== undefined || payload.phoneNumber !== undefined) {
-    payload.phone = String(payload.phone || payload.phoneNumber || "").replace(
-      /\D/g,
-      ""
-    );
+  if (normalizedRole === "fraud analyst") {
+    allowed = ["status", "risk", "riskScore", "riskReasons", "fraudStatus", "fraudNotes"];
   }
 
-  if (payload.accountNumber !== undefined) {
-    payload.accountNumber = String(payload.accountNumber || "").replace(
-      /\D/g,
-      ""
-    );
-  }
+  const payload: any = {};
+  allowed.forEach((field) => {
+    if (body?.[field] !== undefined) payload[field] = body[field];
+  });
 
-  if (payload.branch !== undefined || payload.branchName !== undefined) {
-    payload.branch = String(payload.branch || payload.branchName || "").trim();
-    payload.branchName = payload.branch;
-  }
-
-  if (payload.ifsc !== undefined || payload.ifscCode !== undefined) {
-    payload.ifsc = String(payload.ifsc || payload.ifscCode || "")
-      .toUpperCase()
-      .trim();
-    payload.ifscCode = payload.ifsc;
-  }
-
-  if (payload.amount !== undefined) {
-    payload.amount = cleanMoney(payload.amount);
-  }
-
-  if (payload.ref !== undefined || payload.reference !== undefined) {
-    payload.ref = String(payload.ref || payload.reference || "").trim();
-    payload.reference = payload.ref;
-  }
-
-  if (payload.type !== undefined) {
-    payload.type = String(payload.type || "").trim();
-  }
-
-  if (payload.status !== undefined) {
-    payload.status = String(payload.status || "Success").trim();
-  }
-
-  if (payload.date !== undefined) {
-    payload.date = String(payload.date || "").trim();
-  }
-
-  if (payload.time !== undefined) {
-    payload.time = String(payload.time || "").trim();
-  }
-
+  ["customer", "customerName", "branch", "branchName", "type", "category", "description", "paymentMethod", "status", "fraudStatus", "fraudNotes"].forEach((field) => {
+    if (payload[field] !== undefined) payload[field] = String(payload[field]).trim();
+  });
+  ["email", "customerEmail", "userEmail"].forEach((field) => {
+    if (payload[field] !== undefined) payload[field] = String(payload[field]).toLowerCase().trim();
+  });
+  ["accountNumber", "accountNo", "fromAccount", "ifsc", "ifscCode", "cif"].forEach((field) => {
+    if (payload[field] !== undefined) payload[field] = String(payload[field]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  });
   return payload;
 };
 
-const buildQueryFilter = (query: any) => {
-  const filter: any = {};
-
-  if (query.type) {
-    filter.type = query.type;
-  }
-
-  if (query.status) {
-    filter.status = query.status;
-  }
-
-  if (query.risk) {
-    filter.risk = query.risk;
-  }
-
-  if (query.branch) {
-    const branch = String(query.branch);
-
-    filter.$or = [
-      { branch },
-      { branchName: branch },
-      { ifsc: branch },
-      { ifscCode: branch },
-    ];
-  }
-
-  if (query.search || query.q) {
-    const search = String(query.search || query.q || "").trim();
-
-    if (search) {
-      const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-
-      const searchOr = [
-        { id: regex },
-        { transactionId: regex },
-        { customer: regex },
-        { customerName: regex },
-        { email: regex },
-        { customerEmail: regex },
-        { userEmail: regex },
-        { accountNumber: regex },
-        { type: regex },
-        { amount: regex },
-        { ref: regex },
-        { reference: regex },
-        { status: regex },
-        { risk: regex },
-        { branch: regex },
-        { ifsc: regex },
-      ];
-
-      if (filter.$or) {
-        filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
-        delete filter.$or;
-      } else {
-        filter.$or = searchOr;
-      }
-    }
-  }
-
-  return filter;
+const enrichFromCustomer = (payload: any, customer: any) => {
+  if (!customer) return payload;
+  return {
+    ...payload,
+    customer: payload.customer || customer.name || customer.customerName,
+    customerName: payload.customerName || customer.customerName || customer.name,
+    customerId: payload.customerId || customer.customerId || customer.id,
+    email: payload.email || customer.email || "",
+    customerEmail: payload.customerEmail || customer.email || "",
+    userEmail: payload.userEmail || customer.email || "",
+    phone: payload.phone || customer.phone || customer.phoneNumber || "",
+    accountNumber: payload.accountNumber || customer.accountNumber || customer.accountNo,
+    accountNo: payload.accountNo || customer.accountNo || customer.accountNumber,
+    fromAccount: payload.fromAccount || customer.accountNumber || customer.accountNo,
+    branch: payload.branch || customer.branch || customer.branchName || "",
+    branchName: payload.branchName || customer.branchName || customer.branch || "",
+    branchCode: payload.branchCode || customer.branchCode || "",
+    branchId: payload.branchId || customer.branchId || "",
+    ifsc: payload.ifsc || customer.ifsc || customer.ifscCode || "",
+    ifscCode: payload.ifscCode || customer.ifscCode || customer.ifsc || "",
+    cif: payload.cif || customer.cif || customer.cifNumber || "",
+  };
 };
 
-const findAccessibleTransactionById = async (req: any, id: string) => {
-  const accessFilter = await buildTransactionAccessFilter(req);
+const belongsToAdminBranch = (req: any, payload: any) => {
+  if (isFullAdminRole(req.admin?.role)) return true;
+  const adminIfsc = String(req.admin?.ifsc || req.admin?.ifscCode || "").toUpperCase();
+  const itemIfsc = String(payload.ifsc || payload.ifscCode || "").toUpperCase();
+  const adminBranch = String(req.admin?.branch || req.admin?.branchName || "").trim().toLowerCase();
+  const itemBranch = String(payload.branch || payload.branchName || "").trim().toLowerCase();
+  return Boolean((adminIfsc && adminIfsc === itemIfsc) || (adminBranch && adminBranch === itemBranch));
+};
 
-  const baseOr: any[] = [
-    { id },
-    { transactionId: id },
-    { ref: id },
-    { reference: id },
-  ];
-
-  if (mongoose.Types.ObjectId.isValid(id)) {
-    baseOr.push({ _id: id });
+const validateTransaction = (payload: any, isEdit = false) => {
+  if (!isEdit) {
+    const required = ["customer", "accountNumber", "type", "amount", "date", "time"];
+    const missing = required.find((field) => !String(payload[field] || "").trim());
+    if (missing) return `${missing} is required`;
   }
-
-  const finalFilter = mergeFilters({ $or: baseOr }, accessFilter);
-
-  return AdminTransaction.findOne(finalFilter).select("-_id -__v").lean();
+  if (payload.amount !== undefined && moneyToNumber(payload.amount) <= 0) return "Amount must be greater than 0";
+  if (payload.time && !/^([01]\d|2[0-3]):([0-5]\d)$/.test(String(payload.time))) return "Transaction time must be in HH:MM format";
+  return "";
 };
 
 router.use(protectAdmin);
 
-router.get("/", async (req: any, res: any) => {
+router.get("/", requirePermission("transactions", "read"), async (req: any, res: any) => {
   try {
-    if (!canViewTransactions(req.admin?.role)) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Your role cannot view transactions.",
-      });
+    const query: any = {};
+    if (req.query?.status) query.status = req.query.status;
+    if (req.query?.risk) query.risk = req.query.risk;
+    if (req.query?.type) query.type = req.query.type;
+    if (req.query?.search) {
+      const regex = new RegExp(String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      query.$or = [{ id: regex }, { customer: regex }, { accountNumber: regex }, { ref: regex }, { branch: regex }];
     }
 
-    const queryFilter = buildQueryFilter(req.query);
-    const accessFilter = await buildTransactionAccessFilter(req);
-    const finalFilter = mergeFilters(queryFilter, accessFilter);
-
-    const transactions = await AdminTransaction.find(finalFilter)
-      .select("-_id -__v")
-      .sort({ createdAt: -1, id: -1 })
+    const transactions = await AdminTransaction.find(mergeFilters(query, await getTransactionAccessFilter(req)))
+      .select("-__v")
+      .sort({ createdAt: -1 })
       .lean();
 
-    return res.status(200).json({
-      success: true,
-      count: transactions.length,
-      data: transactions,
-    });
+    return res.status(200).json({ success: true, count: transactions.length, data: transactions });
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch transactions",
-      error: getErrorMessage(error),
-    });
+    return res.status(500).json({ success: false, message: error.message || "Failed to fetch transactions" });
   }
 });
 
-router.get("/:id", async (req: any, res: any) => {
+router.get("/:id", requirePermission("transactions", "read"), async (req: any, res: any) => {
   try {
-    if (!canViewTransactions(req.admin?.role)) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Your role cannot view transactions.",
-      });
-    }
-
-    const transaction = await findAccessibleTransactionById(req, req.params.id);
-
-    if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found or you do not have access.",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: transaction,
-    });
+    const transaction = await AdminTransaction.findOne(mergeFilters(anyIdFilter(req.params.id), await getTransactionAccessFilter(req))).select("-__v").lean();
+    if (!transaction) return res.status(404).json({ success: false, message: "Transaction not found or access denied" });
+    return res.status(200).json({ success: true, data: transaction });
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch transaction",
-      error: getErrorMessage(error),
-    });
+    return res.status(500).json({ success: false, message: error.message || "Failed to fetch transaction" });
   }
 });
 
-router.post("/", async (req: any, res: any) => {
+router.post("/", requirePermission("transactions", "create"), async (req: any, res: any) => {
   try {
-    if (!canWriteTransactions(req.admin?.role)) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Your role cannot create transactions.",
-      });
+    let payload = cleanPayload(req.body, req.admin.role);
+    payload = enrichFromCustomer(payload, await findCustomer(payload));
+    if (!belongsToAdminBranch(req, payload)) {
+      return res.status(403).json({ success: false, message: "You can create transactions only for customers in your assigned branch" });
     }
 
-    const validationError = validateTransaction(req.body, false);
+    const validationError = validateTransaction(payload, false);
+    if (validationError) return res.status(400).json({ success: false, message: validationError });
 
-    if (validationError) {
-      return res.status(400).json({
-        success: false,
-        message: validationError,
-      });
-    }
-
-    const payload = normalizeTransactionPayload(req.body);
-
-    const branchAccessError = await validateAdminBranchAccessForPayload(
-      req,
-      payload
-    );
-
-    if (branchAccessError) {
-      return res.status(403).json({
-        success: false,
-        message: branchAccessError,
-      });
-    }
-
-    const aiRisk = calculateRisk(payload);
-
+    const risk = calculateRisk(payload);
+    const id = generateTransactionId();
     const transaction = await AdminTransaction.create({
-      id: generateTransactionId(),
-      transactionId: generateTransactionId(),
-
-      customer: payload.customer,
-      customerName: payload.customerName || payload.customer,
-      email: payload.email || "",
-      customerEmail: payload.customerEmail || payload.email || "",
-      userEmail: payload.userEmail || payload.email || "",
-
-      customerId: payload.customerId || "",
-      accountNumber: payload.accountNumber,
-      branch: payload.branch || "",
-      branchName: payload.branchName || payload.branch || "",
-      ifsc: payload.ifsc || "",
-      ifscCode: payload.ifscCode || payload.ifsc || "",
-
-      type: payload.type,
-      amount: payload.amount,
-      category: payload.category || "",
-      description: payload.description || "",
-      paymentMethod: payload.paymentMethod || "",
-
-      date: payload.date,
-      time: payload.time,
-      ref: payload.ref || "",
-      reference: payload.reference || payload.ref || "",
-
-      status: payload.status || "Success",
-      risk: aiRisk.risk,
-      riskScore: aiRisk.riskScore,
-      riskReasons: aiRisk.riskReasons,
-
-      createdBy: req.admin?.email || req.admin?.name || "",
-      createdByRole: req.admin?.role || "",
+      id,
+      transactionId: id,
+      ...payload,
+      ...risk,
+      ref: payload.ref || `REF${Date.now()}`,
+      reference: payload.reference || payload.ref || `REF${Date.now()}`,
+      createdBy: req.admin.email || req.admin.name,
+      createdByRole: req.admin.role,
     });
 
-    const savedTransaction = await AdminTransaction.findOne({
-      id: transaction.id,
-    })
-      .select("-_id -__v")
-      .lean();
-
-    return res.status(201).json({
-      success: true,
-      message: "Transaction created successfully",
-      data: savedTransaction,
-    });
+    return res.status(201).json({ success: true, message: "Transaction created successfully", data: transaction });
   } catch (error: any) {
-    return res.status(400).json({
-      success: false,
-      message: getErrorMessage(error),
-      error: getErrorMessage(error),
-    });
+    return res.status(400).json({ success: false, message: error.message || "Failed to create transaction" });
   }
 });
 
-router.put("/:id", async (req: any, res: any) => {
+router.put("/:id", requirePermission("transactions", "update"), async (req: any, res: any) => {
   try {
-    if (!canWriteTransactions(req.admin?.role)) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Your role cannot edit transactions.",
-      });
+    const access = await getTransactionAccessFilter(req);
+    const existing = await AdminTransaction.findOne(mergeFilters(anyIdFilter(req.params.id), access)).lean();
+    if (!existing) return res.status(404).json({ success: false, message: "Transaction not found or access denied" });
+
+    const role = normalizeRole(req.admin.role);
+    const payload = cleanPayload(req.body, req.admin.role);
+
+    if (role === "fraud analyst") {
+      payload.reviewedBy = req.admin.email || req.admin.name;
+      payload.reviewedById = req.admin.employeeId || req.admin.id;
+      payload.reviewedAt = new Date();
+      if (payload.status === "Resolved") payload.fraudStatus = "Resolved";
+    } else {
+      const validationError = validateTransaction({ ...existing, ...payload }, true);
+      if (validationError) return res.status(400).json({ success: false, message: validationError });
+      const risk = calculateRisk({ ...existing, ...payload });
+      payload.risk = risk.risk;
+      payload.riskScore = risk.riskScore;
+      payload.riskReasons = risk.riskReasons;
     }
-
-    const { id } = req.params;
-
-    const existingTransaction = await findAccessibleTransactionById(req, id);
-
-    if (!existingTransaction) {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found or you do not have access.",
-      });
-    }
-
-    const validationError = validateTransaction(req.body, true);
-
-    if (validationError) {
-      return res.status(400).json({
-        success: false,
-        message: validationError,
-      });
-    }
-
-    const updateData = normalizeTransactionPayload(req.body);
-
-    const branchCheckPayload = {
-      ...existingTransaction,
-      ...updateData,
-    };
-
-    const branchAccessError = await validateAdminBranchAccessForPayload(
-      req,
-      branchCheckPayload
-    );
-
-    if (branchAccessError) {
-      return res.status(403).json({
-        success: false,
-        message: branchAccessError,
-      });
-    }
-
-    const riskBase = {
-      ...existingTransaction,
-      ...updateData,
-    };
-
-    const aiRisk = calculateRisk(riskBase);
-
-    updateData.risk = aiRisk.risk;
-    updateData.riskScore = aiRisk.riskScore;
-    updateData.riskReasons = aiRisk.riskReasons;
-
-    const accessFilter = await buildTransactionAccessFilter(req);
-
-    const baseOr: any[] = [
-      { id },
-      { transactionId: id },
-      { ref: id },
-      { reference: id },
-    ];
-
-    if (mongoose.Types.ObjectId.isValid(id)) {
-      baseOr.push({ _id: id });
-    }
-
-    const finalFilter = mergeFilters({ $or: baseOr }, accessFilter);
+    payload.updatedBy = req.admin.email || req.admin.name;
 
     const transaction = await AdminTransaction.findOneAndUpdate(
-      finalFilter,
-      updateData,
-      {
-        new: true,
-        runValidators: true,
-        context: "query",
-      }
-    )
-      .select("-_id -__v")
-      .lean();
+      mergeFilters(anyIdFilter(req.params.id), access),
+      payload,
+      { new: true, runValidators: true }
+    ).select("-__v");
 
-    return res.status(200).json({
-      success: true,
-      message: "Transaction updated successfully",
-      data: transaction,
-    });
+    return res.status(200).json({ success: true, message: "Transaction updated successfully", data: transaction });
   } catch (error: any) {
-    return res.status(400).json({
-      success: false,
-      message: getErrorMessage(error),
-      error: getErrorMessage(error),
-    });
+    return res.status(400).json({ success: false, message: error.message || "Failed to update transaction" });
   }
 });
 
-router.delete("/:id", async (req: any, res: any) => {
+router.delete("/:id", requirePermission("transactions", "delete"), async (req: any, res: any) => {
   try {
-    if (!canDeleteTransactions(req.admin?.role)) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Your role cannot delete transactions.",
-      });
-    }
-
-    const { id } = req.params;
-
-    const accessFilter = await buildTransactionAccessFilter(req);
-
-    const baseOr: any[] = [
-      { id },
-      { transactionId: id },
-      { ref: id },
-      { reference: id },
-    ];
-
-    if (mongoose.Types.ObjectId.isValid(id)) {
-      baseOr.push({ _id: id });
-    }
-
-    const finalFilter = mergeFilters({ $or: baseOr }, accessFilter);
-
-    const transaction = await AdminTransaction.findOneAndDelete(finalFilter)
-      .select("-_id -__v")
-      .lean();
-
-    if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found or you do not have access.",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Transaction deleted successfully",
-      data: transaction,
-    });
+    const transaction = await AdminTransaction.findOneAndDelete(mergeFilters(anyIdFilter(req.params.id), await getTransactionAccessFilter(req))).select("-__v");
+    if (!transaction) return res.status(404).json({ success: false, message: "Transaction not found or access denied" });
+    return res.status(200).json({ success: true, message: "Transaction deleted successfully", data: transaction });
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: "Failed to delete transaction",
-      error: getErrorMessage(error),
-    });
+    return res.status(500).json({ success: false, message: error.message || "Failed to delete transaction" });
   }
 });
 

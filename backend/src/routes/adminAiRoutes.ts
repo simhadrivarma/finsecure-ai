@@ -1,17 +1,17 @@
 import express, { Request, Response } from "express";
-import jwt, { JwtPayload } from "jsonwebtoken";
 import mongoose from "mongoose";
 
 const router = express.Router();
+const auth = require("../middleware/authMiddleware");
+const protectAdmin = auth.protectAdmin || auth;
+const canPerform = auth.canPerform;
+const normalizeAccessRole = auth.normalizeRole;
+const isFullAdminRole = auth.isFullAdminRole;
+
+router.use(protectAdmin);
 
 type BankRecord = Record<string, any>;
 type BankData = Record<string, BankRecord[]>;
-
-const SECRET =
-  process.env.JWT_SECRET ||
-  process.env.SECRET_KEY ||
-  process.env.JWT_PRIVATE_KEY ||
-  "finsecure_ai_secret_key";
 
 const hiddenFields = new Set([
   "password",
@@ -114,8 +114,7 @@ function normalizeRole(role: any) {
 }
 
 function isSuperAdmin(role: string) {
-  const r = normalizeRole(role);
-  return r.includes("super admin") || r === "superadmin" || r === "super";
+  return isFullAdminRole(role);
 }
 
 function roleCanAccess(role: string, module: string) {
@@ -211,7 +210,7 @@ function filterByBranch(records: BankRecord[], admin: BankRecord, role: string) 
   const adminBranch = getRecordBranch(admin);
   const adminIfsc = getRecordIfsc(admin);
 
-  if (!adminBranch && !adminIfsc) return records;
+  if (!adminBranch && !adminIfsc) return [];
 
   return records.filter((record) => {
     const recordBranch = getRecordBranch(record);
@@ -224,28 +223,65 @@ function filterByBranch(records: BankRecord[], admin: BankRecord, role: string) 
   });
 }
 
-function getAuthUser(req: Request) {
-  const authHeader = req.headers.authorization || "";
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.replace("Bearer ", "")
-    : authHeader;
+function isSuspiciousTransaction(record: BankRecord) {
+  const risk = cleanText(record.risk);
+  const status = cleanText(record.status);
+  const fraudStatus = cleanText(record.fraudStatus);
+  const riskScore = numberValue(record.riskScore);
 
-  if (!token) return null;
+  return (
+    ["medium", "high"].includes(risk) ||
+    ["flagged", "failed"].includes(status) ||
+    ["under review", "confirmed"].includes(fraudStatus) ||
+    riskScore >= 50
+  );
+}
 
-  try {
-    const decoded = jwt.verify(token, SECRET) as JwtPayload;
+function buildCustomerIdentifiers(customers: BankRecord[]) {
+  const identifiers = new Set<string>();
 
-    return {
-      id: decoded.id || decoded._id || decoded.userId || "",
-      email: decoded.email || "",
-      role: decoded.role || "",
-      name: decoded.name || "",
-      branch: decoded.branch || decoded.branchName || "",
-      ifsc: decoded.ifsc || decoded.ifscCode || "",
-    };
-  } catch {
-    return null;
-  }
+  customers.forEach((customer) => {
+    [
+      customer.id,
+      customer.customerId,
+      customer.email,
+      customer.accountNumber,
+      customer.accountNo,
+      customer.name,
+      customer.customerName,
+    ].forEach((value) => {
+      const cleaned = cleanText(value);
+      if (cleaned) identifiers.add(cleaned);
+    });
+  });
+
+  return identifiers;
+}
+
+function recordMatchesCustomerIdentifiers(
+  record: BankRecord,
+  identifiers: Set<string>
+) {
+  return [
+    record.customerId,
+    record.id,
+    record.email,
+    record.customerEmail,
+    record.userEmail,
+    record.accountNumber,
+    record.accountNo,
+    record.fromAccount,
+    record.customer,
+    record.customerName,
+    record.name,
+  ].some((value) => identifiers.has(cleanText(value)));
+}
+
+function maskIdentifier(value: any, visible = 4) {
+  const text = normalText(value);
+  if (!text) return "-";
+  if (text.length <= visible) return "*".repeat(text.length);
+  return `${"*".repeat(Math.max(text.length - visible, 4))}${text.slice(-visible)}`;
 }
 
 function getId(record: BankRecord) {
@@ -403,8 +439,8 @@ function formatCustomer(record: BankRecord) {
     `• Total Expense: ${money(record.totalExpense)}`,
     `• KYC: ${record.kyc || record.kycStatus || "-"}`,
     `• Status: ${record.status || "-"}`,
-    `• Aadhaar Number: ${record.aadhaarNumber || record.aadhaar || "-"}`,
-    `• PAN Number: ${record.panNumber || record.pan || "-"}`,
+    `• Aadhaar Number: ${maskIdentifier(record.aadhaarNumber || record.aadhaar, 4)}`,
+    `• PAN Number: ${maskIdentifier(record.panNumber || record.pan, 3)}`,
   ].join("\n");
 }
 
@@ -1069,12 +1105,13 @@ function answerQuestion(question: string, data: BankData, role: string) {
 
 router.post("/chat", async (req: Request, res: Response) => {
   try {
-    const authUser = getAuthUser(req);
+    const adminProfile = (req as any).admin || {};
+    const role = String(adminProfile.role || "").trim();
 
-    if (!authUser) {
-      return res.status(401).json({
+    if (!canPerform(role, "ai insights", "read")) {
+      return res.status(403).json({
         success: false,
-        message: "Unauthorized. Please login again.",
+        message: "Access denied. Your role cannot use Admin AI Insights.",
       });
     }
 
@@ -1087,42 +1124,88 @@ router.post("/chat", async (req: Request, res: Response) => {
       });
     }
 
-    const admins = await getCollection("admins");
+    const cleanRole = normalizeAccessRole(role);
+    const fullAdmin = isFullAdminRole(cleanRole);
 
-    const adminProfile =
-      admins.find((admin) => {
-        return (
-          cleanText(admin.email) === cleanText(authUser.email) ||
-          cleanText(admin.id) === cleanText(authUser.id)
+    const [allCustomers, allTransactions, allReports, allEmployees, allBranches, allLoans, allAdmins, allAuditLogs] =
+      await Promise.all([
+        getCollection("customers"),
+        getCollection("transactions"),
+        getCollection("reports"),
+        getCollection("employees"),
+        getCollection("branches"),
+        getCollection("loans"),
+        getCollection("admins"),
+        getCollection("auditLogs"),
+      ]);
+
+    let scopedCustomers = fullAdmin
+      ? allCustomers
+      : filterByBranch(allCustomers, adminProfile, role);
+    const scopedCustomerIdentifiers = buildCustomerIdentifiers(scopedCustomers);
+
+    let scopedTransactions = fullAdmin
+      ? allTransactions
+      : allTransactions.filter(
+          (transaction) =>
+            filterByBranch([transaction], adminProfile, role).length > 0 ||
+            recordMatchesCustomerIdentifiers(
+              transaction,
+              scopedCustomerIdentifiers
+            )
         );
-      }) || authUser;
 
-    const role = String(adminProfile.role || authUser.role || "Admin");
+    if (cleanRole === "fraud analyst") {
+      scopedTransactions = scopedTransactions.filter(isSuspiciousTransaction);
+      const suspiciousIdentifiers = new Set<string>();
+      scopedTransactions.forEach((transaction) => {
+        [
+          transaction.customerId,
+          transaction.email,
+          transaction.customerEmail,
+          transaction.userEmail,
+          transaction.accountNumber,
+          transaction.accountNo,
+          transaction.fromAccount,
+          transaction.customer,
+          transaction.customerName,
+        ].forEach((value) => {
+          const cleaned = cleanText(value);
+          if (cleaned) suspiciousIdentifiers.add(cleaned);
+        });
+      });
+      scopedCustomers = scopedCustomers.filter((customer) =>
+        recordMatchesCustomerIdentifiers(customer, suspiciousIdentifiers)
+      );
+    }
 
     const data: BankData = {
-      customers: roleCanAccess(role, "customers")
-        ? filterByBranch(await getCollection("customers"), adminProfile, role)
-        : [],
-
+      customers: roleCanAccess(role, "customers") ? scopedCustomers : [],
       employees: roleCanAccess(role, "employees")
-        ? filterByBranch(await getCollection("employees"), adminProfile, role)
+        ? fullAdmin
+          ? allEmployees
+          : filterByBranch(allEmployees, adminProfile, role)
         : [],
-
-      admins: isSuperAdmin(role) ? admins : [],
-
+      admins: fullAdmin ? allAdmins : [],
       branches: roleCanAccess(role, "branches")
-        ? filterByBranch(await getCollection("branches"), adminProfile, role)
+        ? fullAdmin
+          ? allBranches
+          : filterByBranch(allBranches, adminProfile, role)
         : [],
-
       loans: roleCanAccess(role, "loans")
-        ? filterByBranch(await getCollection("loans"), adminProfile, role)
+        ? fullAdmin
+          ? allLoans
+          : filterByBranch(allLoans, adminProfile, role)
         : [],
-
       transactions: roleCanAccess(role, "transactions")
-        ? filterByBranch(await getCollection("transactions"), adminProfile, role)
+        ? scopedTransactions
         : [],
-
-      auditLogs: isSuperAdmin(role) ? await getCollection("auditLogs") : [],
+      reports: roleCanAccess(role, "reports")
+        ? fullAdmin
+          ? allReports
+          : filterByBranch(allReports, adminProfile, role)
+        : [],
+      auditLogs: fullAdmin ? allAuditLogs : [],
     };
 
     const answer = answerQuestion(question, data, role);

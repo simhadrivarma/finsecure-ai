@@ -7,6 +7,11 @@ const User = require("../models/User");
 
 const router = express.Router();
 
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required");
+}
+
 const cleanUser = (user) => {
   return {
     id: user._id,
@@ -31,7 +36,7 @@ const protect = async (req, res, next) => {
 
     const token = authHeader.split(" ")[1];
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret");
+    const decoded = jwt.verify(token, JWT_SECRET);
 
     req.user = decoded;
 

@@ -2,6 +2,11 @@ const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required");
+}
+
 const register = async (req: any, res: any) => {
   try {
     const { name, email, password, role } = req.body;
@@ -51,7 +56,7 @@ const login = async (req: any, res: any) => {
         id: user._id,
         role: user.role,
       },
-      "secretkey",
+      JWT_SECRET,
       { expiresIn: "1d" }
     );
 

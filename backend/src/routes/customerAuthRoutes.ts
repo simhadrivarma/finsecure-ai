@@ -9,8 +9,11 @@ const router = express.Router();
 
 console.log("✅ CUSTOMER AUTH ROUTES V2 NO CREATE LOADED");
 
-const JWT_SECRET =
-  process.env.JWT_SECRET || "finsecure_ai_customer_secret_2026";
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required");
+}
 
 const generateAccountNumber = () => {
   return String(Math.floor(1000000000 + Math.random() * 9000000000));

@@ -258,6 +258,8 @@ const customerSchema = new mongoose.Schema(
           "Active",
           "Inactive",
           "Suspended",
+          "Review",
+          "Blocked",
         ],
         message: "Invalid customer status",
       },
