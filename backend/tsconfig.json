@@ -1,41 +1,25 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "CommonJS",
-    "rootDir": "./src",
-    "outDir": "./dist",
-    "lib": ["ES2022"],
-    "types": ["node"],
-    "strict": false,
+    "target": "ES2020",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "rootDir": "src",
+    "outDir": "dist",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
-    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": false,
+    "skipLibCheck": true,
+    "strict": false,
+    "noImplicitAny": false,
     "sourceMap": false,
-    "noEmitOnError": false,
-    "ignoreDeprecations": "6.0",
-    "moduleDetection": "force"
+    "noEmitOnError": true
   },
   "include": [
-    "src/server.ts",
-    "src/config/**/*.ts",
-    "src/controllers/**/*.ts",
-    "src/middleware/**/*.ts",
-    "src/models/**/*.ts",
-    "src/routes/**/*.ts",
-    "src/utils/**/*.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    "src/app.ts",
-    "src/data",
-    "src/types",
-    "src/**/*.js",
-    "src/**/*.js.map",
-    "src/**/*.d.ts",
-    "src/**/*.d.ts.map"
+    "dist"
   ]
 }
