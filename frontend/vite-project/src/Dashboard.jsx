@@ -93,7 +93,7 @@ const safeJSON = (key, fallback) => {
 };
 
 const formatMoney = (amount) => {
-  return `â‚¹${Number(amount || 0).toLocaleString("en-IN")}`;
+  return `₹${Number(amount || 0).toLocaleString("en-IN")}`;
 };
 
 const formatDate = (date) => {
@@ -192,7 +192,7 @@ const isAdminLikeRole = (role = "") => {
 const cleanNumber = (value) => {
   const numberValue = Number(
     String(value || "0")
-      .replace(/â‚¹/g, "")
+      .replace(/₹/g, "")
       .replace(/,/g, "")
       .trim()
   );
@@ -287,14 +287,6 @@ function Dashboard() {
   const customerStatus = customer.status || "Active";
   const customerPan = customer.panNumber || "N/A";
   const customerAadhaar = customer.aadhaarNumber || "N/A";
-
-  const customerQrToken =
-    customer.qrToken ||
-    (customerId && customerId !== "N/A" ? `CUSTOMER-${customerId}` : "");
-
-  const customerQrValue = customerQrToken
-    ? `FINSECURE-CUSTOMER:${customerQrToken}`
-    : "";
 
   const [authForm, setAuthForm] = useState({
     name: "",
@@ -587,7 +579,7 @@ function Dashboard() {
   const recalculateDashboardFromTransactions = (rows = []) => {
   const toNumber = (value) => {
     const clean = String(value || "")
-      .replace(/â‚¹/g, "")
+      .replace(/₹/g, "")
       .replace(/,/g, "")
       .replace(/\+/g, "")
       .trim();
@@ -1701,7 +1693,7 @@ function Dashboard() {
           </div>
         </div>
 
-        <div style={styles.ornament}>â—‡â”€â”€â”€â”€â—‡</div>
+        <div style={styles.ornament}>◇────◇</div>
 
         <nav style={styles.nav}>
           {navItems.map(([key, Icon, label]) => (
@@ -1869,7 +1861,7 @@ function Dashboard() {
                         value={entryForm.amount}
                         onChange={handleEntryChange}
                         type="number"
-                        placeholder="â‚¹ 0.00"
+                        placeholder="₹ 0.00"
                         style={styles.input}
                       />
                     </Field>
@@ -4647,3 +4639,4 @@ modalBox: {
 };
 
 export default Dashboard;
+
