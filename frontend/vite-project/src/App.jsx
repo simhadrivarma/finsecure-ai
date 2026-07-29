@@ -3,12 +3,15 @@ import AdminPanel from "./AdminPanel";
 import Dashboard from "./Dashboard";
 import "./App.css";
 
+const PRODUCTION_API_URL =
+  "https://finsecure-ai-backend-09.onrender.com";
+
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL ||
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.DEV
     ? "http://127.0.0.1:5000"
-    : "https://finsecure-ai-backend.vercel.app")
+    : PRODUCTION_API_URL)
 ).replace(/\/$/, "");
 
 const normalizeRole = (role = "") => {
@@ -92,6 +95,8 @@ export default function App() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [branchLoading, setBranchLoading] = useState(false);
+  const [branchError, setBranchError] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -198,9 +203,15 @@ export default function App() {
     localStorage.setItem("role", role);
     localStorage.setItem("userRole", role);
 
-    localStorage.setItem("userName", safeUser.name || safeUser.customerName || "Customer");
+    localStorage.setItem(
+      "userName",
+      safeUser.name || safeUser.customerName || "Customer"
+    );
     localStorage.setItem("userEmail", safeUser.email || "");
-    localStorage.setItem("userPhone", safeUser.phone || safeUser.phoneNumber || "");
+    localStorage.setItem(
+      "userPhone",
+      safeUser.phone || safeUser.phoneNumber || ""
+    );
     localStorage.setItem("userAadhaar", safeUser.aadhaarNumber || "");
     localStorage.setItem("userPan", safeUser.panNumber || "");
 
@@ -368,33 +379,113 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    loadBranches();
-  }, []);
+    if (mode === "register") {
+      loadBranches();
+    }
+  }, [mode]);
 
   const loadBranches = async () => {
+    setBranchLoading(true);
+    setBranchError("");
+
+    const endpointCandidates = Array.from(
+      new Set([
+        `${API_BASE_URL}/api/branches/public`,
+        `${PRODUCTION_API_URL}/api/branches/public`,
+      ])
+    );
+
+    let lastMessage = "Branches could not be loaded.";
+
     try {
-      const response = await fetch(`${API_BASE_URL}/api/branches`);
-      const result = await response.json();
+      for (const endpoint of endpointCandidates) {
+        try {
+          const response = await fetch(endpoint, {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+            },
+            cache: "no-store",
+          });
 
-      if (Array.isArray(result)) {
-        setBranches(result);
-        return;
-      }
+          const result = await response.json().catch(() => ({}));
 
-      if (result.success && Array.isArray(result.data)) {
-        setBranches(result.data);
-        return;
-      }
+          if (!response.ok) {
+            lastMessage =
+              result?.message ||
+              `Unable to load branches (${response.status})`;
+            continue;
+          }
 
-      if (Array.isArray(result.branches)) {
-        setBranches(result.branches);
-        return;
+          const branchRows = Array.isArray(result)
+            ? result
+            : Array.isArray(result?.data)
+              ? result.data
+              : Array.isArray(result?.branches)
+                ? result.branches
+                : [];
+
+          const usableBranches = branchRows
+            .map((branch) => {
+              const branchName = String(
+                branch?.name ||
+                  branch?.branchName ||
+                  branch?.branch ||
+                  branch?.title ||
+                  ""
+              ).trim();
+
+              const ifscCode = String(
+                branch?.ifsc ||
+                  branch?.ifscCode ||
+                  branch?.IFSC ||
+                  ""
+              )
+                .toUpperCase()
+                .trim();
+
+              return {
+                ...branch,
+                name: branchName,
+                branchName,
+                ifsc: ifscCode,
+                ifscCode,
+              };
+            })
+            .filter((branch) => {
+              const status = String(branch?.status || "Active")
+                .trim()
+                .toLowerCase();
+
+              return (
+                Boolean(branch.name) &&
+                status !== "inactive" &&
+                status !== "closed"
+              );
+            })
+            .sort((firstBranch, secondBranch) =>
+              firstBranch.name.localeCompare(secondBranch.name)
+            );
+
+          if (usableBranches.length > 0) {
+            setBranches(usableBranches);
+            setBranchError("");
+            return;
+          }
+
+          lastMessage =
+            "No active branches are available. Create an active branch from the Super Admin portal.";
+        } catch (requestError) {
+          lastMessage =
+            requestError?.message ||
+            "The branch service could not be reached.";
+        }
       }
 
       setBranches([]);
-    } catch (err) {
-      console.error("Failed to load branches:", err);
-      setBranches([]);
+      setBranchError(lastMessage);
+    } finally {
+      setBranchLoading(false);
     }
   };
 
@@ -434,6 +525,7 @@ export default function App() {
     setMode("register");
     setError("");
     setSuccess("");
+    setBranchError("");
     loadBranches();
 
     // Create Customer Account must open registration page first.
@@ -511,49 +603,6 @@ export default function App() {
     }
   };
 
-  const handleAdminDirectLogin = async () => {
-    setLoginForm({
-      email: "admin@finsecure.ai",
-      password: "admin123",
-    });
-
-    setError("");
-    setSuccess("");
-
-    try {
-      setLoading(true);
-
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: "admin@finsecure.ai",
-          password: "admin123",
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || "Admin login failed");
-      }
-
-      const user = saveSession(result);
-
-      if (!isAdminRole(user?.role)) {
-        throw new Error("This account is not an admin account");
-      }
-
-      goTo("admin");
-    } catch (err) {
-      setError(err.message || "Admin login failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleRegister = async (e) => {
     e.preventDefault();
 
@@ -570,6 +619,16 @@ export default function App() {
       return;
     }
 
+    if (!registerForm.branch.trim()) {
+      setError("Please select a branch");
+      return;
+    }
+
+    if (!registerForm.ifsc.trim()) {
+      setError("The selected branch does not have an IFSC code");
+      return;
+    }
+
     if (!registerForm.email.trim()) {
       setError("Email is required");
       return;
@@ -583,7 +642,7 @@ export default function App() {
     try {
       setLoading(true);
 
-      const selectedBranch = registerForm.branch || "Main Branch";
+      const selectedBranch = registerForm.branch.trim();
 
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
@@ -766,9 +825,16 @@ export default function App() {
               style={styles.input}
               value={registerForm.branch}
               onChange={(e) => handleBranchSelect(e.target.value)}
+              disabled={branchLoading}
               required
             >
-              <option value="">Select Branch</option>
+              <option value="">
+                {branchLoading
+                  ? "Loading branches..."
+                  : branches.length > 0
+                    ? "Select Branch"
+                    : "No branches available"}
+              </option>
 
               {branches.map((branch) => {
                 const branchName = getBranchName(branch);
@@ -788,6 +854,20 @@ export default function App() {
                 );
               })}
             </select>
+
+            {branchError && (
+              <div style={styles.error}>
+                {branchError}
+                <button
+                  type="button"
+                  style={styles.retryButton}
+                  onClick={loadBranches}
+                  disabled={branchLoading}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
 
             {registerForm.ifsc && (
               <div style={styles.branchInfo}>IFSC: {registerForm.ifsc}</div>
@@ -850,15 +930,7 @@ export default function App() {
               Already Have Account? Login
             </button>
           )}
-
-          <button
-            type="button"
-            style={styles.adminButton}
-            onClick={handleAdminDirectLogin}
-            disabled={loading}
-          >
-            Admin Direct Login
-          </button>
+          
         </div>
 
         <p style={styles.footerText}>
@@ -1046,6 +1118,17 @@ const styles = {
     fontSize: "14px",
   },
 
+  retryButton: {
+    marginLeft: "10px",
+    border: "1px solid rgba(254, 202, 202, 0.8)",
+    borderRadius: "8px",
+    padding: "5px 10px",
+    background: "rgba(255, 255, 255, 0.08)",
+    color: "#ffffff",
+    fontWeight: "800",
+    cursor: "pointer",
+  },
+
   success: {
     marginTop: "8px",
     padding: "12px",
@@ -1075,7 +1158,7 @@ const styles = {
   portalButtons: {
     marginTop: "16px",
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns: "1fr",
     gap: "12px",
   },
 
@@ -1089,15 +1172,6 @@ const styles = {
     cursor: "pointer",
   },
 
-  adminButton: {
-    height: "48px",
-    borderRadius: "12px",
-    border: "1px solid rgba(59, 130, 246, 0.8)",
-    background: "rgba(30, 64, 175, 0.35)",
-    color: "#dbeafe",
-    fontWeight: "900",
-    cursor: "pointer",
-  },
 
   footerText: {
     marginTop: "20px",
