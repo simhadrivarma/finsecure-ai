@@ -1,4 +1,4 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -110,7 +110,7 @@ const cleanMoney = (value: any) => {
   if (value === undefined || value === null || value === "") return 0;
  
   const numberValue = Number(
-    String(value).replace(/₹/g, "").replace(/,/g, "").trim()
+    String(value).replace(/â‚¹/g, "").replace(/,/g, "").trim()
   );
  
   return Number.isNaN(numberValue) ? 0 : numberValue;
@@ -511,7 +511,7 @@ const applyTransactionToCustomerBalance = async (transaction: any) => {
 ================================ */
  
 app.get("/", (req: any, res: any) => {
-  res.send("FinSecure AI Backend Running 🚀");
+  res.send("FinSecure AI Backend Running ðŸš€");
 });
  
 app.get("/api/health", async (req: any, res: any) => {
@@ -1286,10 +1286,10 @@ app.get("/api/dashboard", async (req: any, res: any) => {
         totalReports: reports.length,
         totalAuditLogs: auditLogs.length,
  
-        totalBalance: `₹${totalBalance.toLocaleString("en-IN")}`,
-        branchBalance: `₹${totalBalance.toLocaleString("en-IN")}`,
-        totalLoanAmount: `₹${totalLoanAmount.toLocaleString("en-IN")}`,
-        transactionVolume: `₹${transactionVolume.toLocaleString("en-IN")}`,
+        totalBalance: `â‚¹${totalBalance.toLocaleString("en-IN")}`,
+        branchBalance: `â‚¹${totalBalance.toLocaleString("en-IN")}`,
+        totalLoanAmount: `â‚¹${totalLoanAmount.toLocaleString("en-IN")}`,
+        transactionVolume: `â‚¹${transactionVolume.toLocaleString("en-IN")}`,
  
         aiRiskAlerts: transactions.filter((t: any) =>
           ["High", "Medium", "Flagged"].includes(t.risk || t.status)
@@ -1440,8 +1440,8 @@ if (!db) {
     };
  
     const formatMoney = (value: any) => {
-      const numberValue = Number(String(value || 0).replace(/₹|,/g, ""));
-      return `₹${Number.isNaN(numberValue) ? 0 : numberValue.toLocaleString("en-IN")}`;
+      const numberValue = Number(String(value || 0).replace(/â‚¹|,/g, ""));
+      return `â‚¹${Number.isNaN(numberValue) ? 0 : numberValue.toLocaleString("en-IN")}`;
     };
  
     const formatRecord = (title: string, record: any) => {
@@ -1452,7 +1452,7 @@ if (!db) {
           .replace(/([A-Z])/g, " $1")
           .replace(/^./, (char) => char.toUpperCase());
  
-        return `• ${label}: ${value || "-"}`;
+        return `â€¢ ${label}: ${value || "-"}`;
       });
  
       return `${title}\n${lines.join("\n")}`;
@@ -1467,14 +1467,14 @@ if (!db) {
     const auditLogs = await getCollection(["auditlogs", "auditLogs", "audit_logs"]);
  
     const totalCustomerBalance = customers.reduce((sum: number, item: any) => {
-      return sum + Number(String(item.balance || 0).replace(/₹|,/g, ""));
+      return sum + Number(String(item.balance || 0).replace(/â‚¹|,/g, ""));
     }, 0);
  
     const totalLoanAmount = loans.reduce((sum: number, item: any) => {
       return (
         sum +
         Number(
-          String(item.loanAmount || item.amount || item.totalLoans || 0).replace(/₹|,/g, "")
+          String(item.loanAmount || item.amount || item.totalLoans || 0).replace(/â‚¹|,/g, "")
         )
       );
     }, 0);
@@ -1539,15 +1539,15 @@ if (!db) {
     ) {
       answer = [
         "FinSecure Bank Summary",
-        `• Total Customers: ${customers.length}`,
-        `• Total Employees: ${employees.length}`,
-        `• Total Admins: ${admins.length}`,
-        `• Total Branches: ${branches.length}`,
-        `• Total Loans: ${loans.length}`,
-        `• Total Transactions: ${transactions.length}`,
-        `• Total Audit Logs: ${auditLogs.length}`,
-        `• Total Customer Balance: ${formatMoney(totalCustomerBalance)}`,
-        `• Total Loan Amount: ${formatMoney(totalLoanAmount)}`,
+        `â€¢ Total Customers: ${customers.length}`,
+        `â€¢ Total Employees: ${employees.length}`,
+        `â€¢ Total Admins: ${admins.length}`,
+        `â€¢ Total Branches: ${branches.length}`,
+        `â€¢ Total Loans: ${loans.length}`,
+        `â€¢ Total Transactions: ${transactions.length}`,
+        `â€¢ Total Audit Logs: ${auditLogs.length}`,
+        `â€¢ Total Customer Balance: ${formatMoney(totalCustomerBalance)}`,
+        `â€¢ Total Loan Amount: ${formatMoney(totalLoanAmount)}`,
       ].join("\n");
     } else {
       const findCustomer = customers.find((customer: any) => {
@@ -1609,16 +1609,16 @@ if (!db) {
       } else {
         answer = [
           "I can answer questions like:",
-          "• Total customers",
-          "• Employees count",
-          "• Total branches",
-          "• Total loans",
-          "• Total transactions",
-          "• Total balance",
-          "• Complete bank summary",
-          "• Show customer Teja details",
-          "• Show employee Sri details",
-          "• Show branch Gajuwaka details",
+          "â€¢ Total customers",
+          "â€¢ Employees count",
+          "â€¢ Total branches",
+          "â€¢ Total loans",
+          "â€¢ Total transactions",
+          "â€¢ Total balance",
+          "â€¢ Complete bank summary",
+          "â€¢ Show customer Teja details",
+          "â€¢ Show employee Sri details",
+          "â€¢ Show branch Gajuwaka details",
         ].join("\n");
       }
     }
@@ -1662,3 +1662,4 @@ app.use((error: any, req: any, res: any, next: any) => {
 });
  
 module.exports = app;
+module.exports.connectDatabase = connectDatabase;
