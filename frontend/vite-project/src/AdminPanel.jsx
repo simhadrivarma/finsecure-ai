@@ -6,7 +6,7 @@ const rawApiBaseUrl =
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.DEV
     ? "http://localhost:5000"
-    : "https://finsecure-ai-backend-09.onrender.com");
+    : "https://finsecure-ai-backend.vercel.app");
 
 const API_BASE_URL = String(rawApiBaseUrl).replace(/\/$/, "");
   
@@ -69,34 +69,25 @@ const getStoredAdmin = () => {
 
 const normalizeAdminRole = (role) => {
   const value = String(role || "").trim();
-  const normalized = value
-    .toLowerCase()
-    .replace(/[_-]/g, " ")
-    .replace(/\s+/g, " ");
+  const normalized = value.toLowerCase().replace(/[_-]/g, " ").replace(/\s+/g, " ");
 
   const roleMap = {
-    admin: "Admin",
+    "": "Super Admin",
+    admin: "Super Admin",
     super: "Super Admin",
     superadmin: "Super Admin",
-    "super administrator": "Super Admin",
     "super admin": "Super Admin",
     manager: "Branch Manager",
     "branch manager": "Branch Manager",
-    "loan manager": "Loan Manager",
     "loan officer": "Loan Officer",
+    "loan manager": "Loan Officer",
     "fraud analyst": "Fraud Analyst",
     "customer support": "Customer Support",
     "customer support executive": "Customer Support",
-    "support executive": "Customer Support",
     "report analyst": "Report Analyst",
-    "reports analyst": "Report Analyst",
-    cashier: "Cashier",
-    "relationship manager": "Relationship Manager",
-    "admin officer": "Admin Officer",
-    customer: "Customer",
   };
 
-  return roleMap[normalized] || (value || "Unknown");
+  return roleMap[normalized] || value;
 };
 
 const buildAdminSession = (adminData) => {
@@ -104,12 +95,12 @@ const buildAdminSession = (adminData) => {
     adminData?.role ||
     localStorage.getItem("role") ||
     localStorage.getItem("userRole") ||
-    "Unknown";
+    "Super Admin";
 
   return {
     ...adminData,
     role: normalizeAdminRole(rawRole),
-    name: adminData?.name || "FinSecure Admin",
+    name: adminData?.name || "FinSecure Super Admin",
     email: adminData?.email || "",
   };
 };
@@ -189,149 +180,42 @@ const menuItems = [
   { key: "settings", label: "Basic Settings", icon: "⚙️" },
 ];
 
-const fullAdminPages = [
-  "dashboard",
-  "admin",
-  "auditLog",
-  "employee",
-  "branch",
-  "customer",
-  "loan",
-  "transaction",
-  "ai",
-  "report",
-  "settings",
-];
-
 const roleAccess = {
-  "Super Admin": fullAdminPages,
-  Admin: fullAdminPages,
-  "Branch Manager": [
+  "Super Admin": [
     "dashboard",
+    "admin",
+    "auditLog",
     "employee",
     "branch",
     "customer",
     "loan",
-    "transaction",
-    "report",
-    "settings",
-  ],
-  "Loan Manager": ["dashboard", "customer", "loan", "report", "settings"],
-  "Loan Officer": ["dashboard", "customer", "loan", "settings"],
-  "Fraud Analyst": [
-    "dashboard",
-    "customer",
     "transaction",
     "ai",
     "report",
     "settings",
   ],
-  "Customer Support": ["dashboard", "customer", "transaction", "settings"],
-  "Report Analyst": ["dashboard", "report", "settings"],
-  Cashier: ["dashboard", "customer", "transaction", "settings"],
-  "Relationship Manager": [
+  "Branch Manager": [
     "dashboard",
+    "branch",
     "customer",
     "loan",
     "report",
     "settings",
   ],
-  "Admin Officer": [
-    "dashboard",
-    "employee",
-    "branch",
-    "customer",
-    "settings",
-  ],
+  "Loan Officer": ["dashboard", "customer", "loan", "settings"],
+  "Fraud Analyst": ["dashboard", "transaction", "ai", "settings"],
+  "Customer Support": ["dashboard", "customer", "settings"],
+  "Report Analyst": ["dashboard", "report", "settings"],
 };
 
 const adminRoles = [
   "Super Admin",
-  "Admin",
   "Branch Manager",
-  "Loan Manager",
   "Loan Officer",
   "Fraud Analyst",
-  "Customer Support Executive",
+  "Customer Support",
   "Report Analyst",
-  "Cashier",
-  "Relationship Manager",
-  "Admin Officer",
 ];
-
-const roleActionPermissions = {
-  "Super Admin": { "*": ["read", "create", "update", "delete", "export"] },
-  Admin: { "*": ["read", "create", "update", "delete", "export"] },
-  "Branch Manager": {
-    dashboard: ["read"],
-    employee: ["read", "create", "update", "export"],
-    branch: ["read", "update", "export"],
-    customer: ["read", "create", "update", "export"],
-    loan: ["read", "create", "update", "export"],
-    transaction: ["read", "create", "update", "export"],
-    report: ["read", "create", "update", "export"],
-    settings: ["read", "update"],
-  },
-  "Loan Manager": {
-    dashboard: ["read"],
-    customer: ["read", "export"],
-    loan: ["read", "create", "update", "export"],
-    report: ["read", "export"],
-    settings: ["read", "update"],
-  },
-  "Loan Officer": {
-    dashboard: ["read"],
-    customer: ["read"],
-    loan: ["read", "create", "update"],
-    settings: ["read", "update"],
-  },
-  "Fraud Analyst": {
-    dashboard: ["read"],
-    customer: ["read"],
-    transaction: ["read", "update", "export"],
-    ai: ["read"],
-    report: ["read", "export"],
-    settings: ["read", "update"],
-  },
-  "Customer Support": {
-    dashboard: ["read"],
-    customer: ["read", "update"],
-    transaction: ["read"],
-    settings: ["read", "update"],
-  },
-  "Report Analyst": {
-    dashboard: ["read"],
-    report: ["read", "create", "update", "export"],
-    settings: ["read", "update"],
-  },
-  Cashier: {
-    dashboard: ["read"],
-    customer: ["read"],
-    transaction: ["read", "create"],
-    settings: ["read", "update"],
-  },
-  "Relationship Manager": {
-    dashboard: ["read"],
-    customer: ["read", "update", "export"],
-    loan: ["read", "export"],
-    report: ["read", "export"],
-    settings: ["read", "update"],
-  },
-  "Admin Officer": {
-    dashboard: ["read"],
-    employee: ["read", "create", "update", "export"],
-    branch: ["read"],
-    customer: ["read", "create", "update", "export"],
-    settings: ["read", "update"],
-  },
-};
-
-const canPerformRoleAction = (role, page, action = "read") => {
-  const permissions = roleActionPermissions[normalizeAdminRole(role)];
-  if (!permissions) return false;
-  const actions = permissions[page] || permissions["*"] || [];
-  return actions.includes(action);
-};
 
 const configs = {
   
@@ -430,14 +314,12 @@ const configs = {
         required: true,
         options: [
           "Branch Manager",
-          "Loan Manager",
           "Loan Officer",
           "Customer Support Executive",
           "Cashier",
           "Relationship Manager",
           "Admin Officer",
           "Fraud Analyst",
-          "Report Analyst",
         ],
       },
       
@@ -532,8 +414,7 @@ const configs = {
   name: "password",
   label: "Password",
   type: "password",
-  requiredOnAdd: true,
-  placeholder: "Leave empty while editing if unchanged",
+  required: true,
 },
       { name: "phone", label: "Phone Number" },
       { name: "accountNumber", label: "Account Number", required: true },
@@ -624,17 +505,8 @@ const configs = {
         name: "status",
         label: "Status",
         type: "select",
-        defaultValue: "Pending",
-        options: [
-          "Pending",
-          "Review",
-          "Under Review",
-          "Approved",
-          "Rejected",
-          "Active",
-          "Closed",
-          "Defaulted",
-        ],
+        defaultValue: "Active",
+        options: ["Active", "Closed", "Review", "Defaulted"],
       },
     ],
   },
@@ -656,7 +528,6 @@ const configs = {
       ["status", "Status"],
       ["risk", "AI Risk"],
       ["riskScore", "Risk Score"],
-      ["fraudStatus", "Fraud Status"],
     ],
     fields: [
       { name: "customer", label: "Customer Name", required: true },
@@ -686,7 +557,7 @@ const configs = {
         label: "Status",
         type: "select",
         defaultValue: "Success",
-        options: ["Success", "Completed", "Pending", "Failed", "Flagged", "Resolved"],
+        options: ["Success", "Pending", "Failed", "Flagged"],
       },
       {
         name: "risk",
@@ -695,20 +566,6 @@ const configs = {
         defaultValue: "Normal",
         options: ["Normal", "Low", "Medium", "High"],
       },
-      {
-        name: "fraudStatus",
-        label: "Fraud Review Status",
-        type: "select",
-        defaultValue: "Not Reviewed",
-        options: [
-          "Not Reviewed",
-          "Under Review",
-          "Confirmed",
-          "Cleared",
-          "Resolved",
-        ],
-      },
-      { name: "fraudNotes", label: "Fraud Review Notes", type: "textarea" },
     ],
   },
 
@@ -794,11 +651,6 @@ function LoginPage({ onLogin }) {
 
       if (!adminData || !token) {
         throw new Error("Invalid admin login response from backend");
-      }
-
-      const loginRole = normalizeAdminRole(adminData.role);
-      if (loginRole === "Customer" || !roleAccess[loginRole]) {
-        throw new Error("This login does not have access to the staff banking panel");
       }
 
       const savedAdmin = saveAdminSession(adminData, token);
@@ -936,24 +788,48 @@ function Dashboard({ dashboardData, counts }) {
     ],
   ];
 
-  const moneyCards = [
-    [
-      "Customer Balance",
-      dashboardData.totalBalance || "₹0",
-      "Total customer balance",
-    ],
-    [
-      "Branch Balance",
-      dashboardData.branchBalance || "₹0",
-      "Total branch balance",
-    ],
-    ["Loan Amount", dashboardData.totalLoanAmount || "₹0", "Total loan value"],
-    [
-      "Transaction Volume",
-      dashboardData.transactionVolume || "₹0",
-      "Total transaction value",
-    ],
-  ];
+
+
+const cleanDashboardMoney = (value) => {
+  const cleaned = String(value ?? "0")
+    .replace(/â‚¹/g, "")
+    .replace(/₹/g, "")
+    .replace(/NaN/gi, "0")
+    .trim();
+
+  if (
+    !cleaned ||
+    cleaned.toLowerCase() === "undefined" ||
+    cleaned.toLowerCase() === "null"
+  ) {
+    return "0";
+  }
+
+  return cleaned;
+};
+
+const moneyCards = [
+  [
+    "Customer Balance",
+    cleanDashboardMoney(dashboardData.totalBalance),
+    "Total customer balance",
+  ],
+  [
+    "Branch Balance",
+    cleanDashboardMoney(dashboardData.branchBalance),
+    "Total branch balance",
+  ],
+  [
+    "Loan Amount",
+    cleanDashboardMoney(dashboardData.totalLoanAmount),
+    "Total loan value",
+  ],
+  [
+    "Transaction Volume",
+    cleanDashboardMoney(dashboardData.transactionVolume),
+    "Total transaction value",
+  ],
+];
 
   const riskBars = [
     ["Normal", riskDistribution.normal || 0],
@@ -1961,7 +1837,6 @@ function EntityPage({
   onView,
   onEdit,
   onDelete,
-  canExport = false,
 }) {
   const filterableKeys = [
     "status",
@@ -2140,19 +2015,15 @@ function EntityPage({
         </div>
 
         <div className="button-row">
-          {canExport && (
-            <>
-              <button className="secondary-btn" onClick={exportExcel}>
-                Export Excel
-              </button>
+          <button className="secondary-btn" onClick={exportExcel}>
+            Export Excel
+          </button>
 
-              <button className="secondary-btn" onClick={exportPDF}>
-                Export PDF
-              </button>
-            </>
-          )}
+          <button className="secondary-btn" onClick={exportPDF}>
+            Export PDF
+          </button>
 
-          {config.buttonText && onAdd && (
+          {config.buttonText && (
             <button className="primary-btn" onClick={onAdd}>
               {config.buttonText}
             </button>
@@ -2210,7 +2081,7 @@ function EntityPage({
                 {config.columns.map(([key, label]) => (
                   <th key={key}>{label}</th>
                 ))}
-                {(onView || onEdit || onDelete) && <th>Actions</th>}
+                <th>Actions</th>
               </tr>
             </thead>
 
@@ -2227,32 +2098,24 @@ function EntityPage({
                     </td>
                   ))}
 
-                  {(onView || onEdit || onDelete) && (
-                    <td>
-                      <div className="actions">
-                        {onView && <button onClick={() => onView(row)}>View</button>}
-                        {onEdit && <button onClick={() => onEdit(row)}>Edit</button>}
-                        {onDelete && (
-                          <button
-                            className="danger-btn"
-                            onClick={() => onDelete(row)}
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  )}
+                  <td>
+                    <div className="actions">
+                      <button onClick={() => onView(row)}>View</button>
+                      <button onClick={() => onEdit(row)}>Edit</button>
+                      <button
+                        className="danger-btn"
+                        onClick={() => onDelete(row)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
 
               {filteredRows.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={
-                      config.columns.length + (onView || onEdit || onDelete ? 1 : 0)
-                    }
-                  >
+                  <td colSpan={config.columns.length + 1}>
                     No records found.
                   </td>
                 </tr>
@@ -2272,6 +2135,7 @@ function AuditLogsPage({
   filters,
   setFilters,
   onRefresh,
+  onClear,
 }) {
   const columns = [
     ["id", "Log ID"],
@@ -2354,6 +2218,7 @@ function AuditLogsPage({
             Refresh Logs
           </button>
 
+    
         </div>
       </div>
 
@@ -2705,26 +2570,12 @@ export default function App() {
   const adminRole = normalizeAdminRole(admin?.role);
 
   const allowedPages = useMemo(() => {
-    return roleAccess[adminRole] || ["settings"];
+    return roleAccess[adminRole] || ["dashboard", "settings"];
   }, [adminRole]);
 
   const allowedMenuItems = useMemo(() => {
     return menuItems.filter((item) => allowedPages.includes(item.key));
   }, [allowedPages]);
-
-  const canPerform = (page, action = "read") =>
-    canPerformRoleAction(adminRole, page, action);
-
-  useEffect(() => {
-    if (!admin) return;
-
-    if (adminRole === "Customer" || !roleAccess[adminRole]) {
-      clearAdminSession();
-      setAdmin(null);
-      setToken("");
-      setActivePage("dashboard");
-    }
-  }, [admin, adminRole]);
 
   const counts = useMemo(
     () => ({
@@ -2868,12 +2719,7 @@ export default function App() {
         throw new Error(result.message || `Failed to load ${type}`);
       }
 
-      const loadedRows = result.data || result.logs || result.rows || [];
-
-      setData((prev) => ({
-        ...prev,
-        [type]: Array.isArray(loadedRows) ? loadedRows : [],
-      }));
+      setData((prev) => ({ ...prev, [type]: result.data || [] }));
     } catch (err) {
       console.error(`${type} load error:`, err);
     } finally {
@@ -2916,55 +2762,39 @@ export default function App() {
     targetName,
     description,
     status = "Success",
-    metadata = {},
   }) => {
-    const auditPayload = {
-      id: `LOG-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 8)
-        .toUpperCase()}`,
-      action: String(action || "").trim(),
-      module: String(module || "").trim(),
-      description: String(description || "").trim(),
-      targetName: String(targetName || "-").trim(),
-      status: String(status || "Success").trim(),
-      metadata:
-        metadata && typeof metadata === "object" && !Array.isArray(metadata)
-          ? metadata
-          : {},
+    const localLog = {
+      id: `LOG${Date.now()}`,
+      action,
+      module,
+      adminName: admin?.name || "FinSecure Super Admin",
+      adminEmail: admin?.email || "admin@finsecure.ai",
+      adminRole: adminRole || "Super Admin",
+      description,
+      targetName: targetName || "-",
+      status,
+      createdAt: new Date().toISOString(),
     };
 
     try {
       const response = await fetch(API.auditLog, {
         method: "POST",
         headers: getAuthHeaders(),
-        body: JSON.stringify(auditPayload),
+        body: JSON.stringify(localLog),
       });
 
-      const result = await response.json().catch(() => ({}));
       if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
         console.warn("Audit log save failed:", result.message || response.statusText);
-        return null;
       }
-
-      const savedLog = result.data || result.log || null;
-      if (savedLog && allowedPages.includes("auditLog")) {
-        setData((previous) => ({
-          ...previous,
-          auditLog: [
-            savedLog,
-            ...(previous.auditLog || []).filter(
-              (item) => item.id !== savedLog.id && item._id !== savedLog._id
-            ),
-          ],
-        }));
-      }
-
-      return savedLog;
     } catch (error) {
-      console.error("Audit log request failed:", error);
-      return null;
+      console.error("Audit log error:", error);
     }
+
+    setData((prev) => ({
+      ...prev,
+      auditLog: [localLog, ...(prev.auditLog || [])],
+    }));
   };
 
   useEffect(() => {
@@ -3110,9 +2940,7 @@ if (type === "admin") {
       }
 
       await loadEntity(type);
-      if (allowedPages.includes("auditLog")) {
-        await loadEntity("auditLog");
-      }
+      await loadEntity("auditLog");
       await loadDashboard();
 
       setModal({
@@ -3161,15 +2989,42 @@ if (type === "admin") {
       }
 
       await loadEntity(type);
-      if (allowedPages.includes("auditLog")) {
-        await loadEntity("auditLog");
-      }
+      await loadEntity("auditLog");
       await loadDashboard();
     } catch (err) {
       alert(err.message || "Delete failed");
     }
   };
 
+  const clearAuditLogs = async () => {
+    if (!window.confirm("Clear all audit logs?")) return;
+
+    try {
+      const response = await fetch(API.auditLog, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+
+      const result = await response.json();
+
+      if (isAuthOrPermissionError(response)) {
+        throw new Error(
+          result.message || "Access denied or session check failed. Please try again."
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to clear audit logs");
+      }
+
+      await loadEntity("auditLog");
+      await loadDashboard();
+
+      alert("Audit logs cleared successfully");
+    } catch (err) {
+      alert(err.message || "Failed to clear audit logs");
+    }
+  };
 
   const updateProfile = async (profileData) => {
     try {
@@ -3268,6 +3123,7 @@ if (type === "admin") {
             }))
           }
           onRefresh={() => loadEntity("auditLog")}
+          onClear={clearAuditLogs}
         />
       );
     }
@@ -3309,45 +3165,31 @@ if (type === "admin") {
             [activePage]: nextFilters,
           }))
         }
-        canExport={canPerform(activePage, "export")}
-        onAdd={
-          canPerform(activePage, "create")
-            ? () =>
-                setModal({
-                  open: true,
-                  type: activePage,
-                  mode: "add",
-                  item: null,
-                })
-            : null
+        onAdd={() =>
+          setModal({
+            open: true,
+            type: activePage,
+            mode: "add",
+            item: null,
+          })
         }
-        onView={
-          canPerform(activePage, "read")
-            ? (item) =>
-                setModal({
-                  open: true,
-                  type: activePage,
-                  mode: "view",
-                  item,
-                })
-            : null
+        onView={(item) =>
+          setModal({
+            open: true,
+            type: activePage,
+            mode: "view",
+            item,
+          })
         }
-        onEdit={
-          canPerform(activePage, "update")
-            ? (item) =>
-                setModal({
-                  open: true,
-                  type: activePage,
-                  mode: "edit",
-                  item,
-                })
-            : null
+        onEdit={(item) =>
+          setModal({
+            open: true,
+            type: activePage,
+            mode: "edit",
+            item,
+          })
         }
-        onDelete={
-          canPerform(activePage, "delete")
-            ? (item) => deleteEntity(activePage, item)
-            : null
-        }
+        onDelete={(item) => deleteEntity(activePage, item)}
       />
     );
   };
