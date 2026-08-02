@@ -1195,6 +1195,7 @@ const secureBranchRoutes = require("./routes/branchRoutes");
 const secureCustomerRoutes = require("./routes/customerRoutes");
 const secureLoanRoutes = require("./routes/loanRoutes");
 const secureAdminTransactionRoutes = require("./routes/adminTransactionRoutes");
+const adminAiRoutes = require("./routes/adminAiRoutes");
 const customerAiRoutes = require("./routes/customerAiRoutes");
  
 app.use("/api/employees", secureEmployeeRoutes.default || secureEmployeeRoutes);
@@ -1204,6 +1205,10 @@ app.use("/api/loans", secureLoanRoutes.default || secureLoanRoutes);
 app.use(
   "/api/admin-transactions",
   secureAdminTransactionRoutes.default || secureAdminTransactionRoutes
+);
+app.use(
+  "/api/admin-ai",
+  adminAiRoutes.default || adminAiRoutes
 );
 app.use(
   "/api/customer-ai",
