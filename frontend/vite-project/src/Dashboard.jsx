@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import AIChatBox from "./components/AIChatBox";
 import { QRCodeSVG } from "qrcode.react";
-
+import {
+  // other icons...
+  Headphones,
+  Settings,
+} from "lucide-react";
 import {
   LayoutDashboard,
   Landmark,
@@ -2628,27 +2632,508 @@ function Dashboard() {
 
           {selectedPage === "customer-care" && (
   <div style={styles.card}>
+    {/* HEADER */}
     <div style={styles.cardHeader}>
       <div>
-        <h2 style={styles.cardTitle}>Customer Care</h2>
+        <h2 style={styles.cardTitle}>FinSecure Customer Care</h2>
 
         <p style={styles.desc}>
-          Welcome to FinSecure Customer Support.
-          How can we help you today?
+          Secure banking assistance, service requests and emergency support.
         </p>
       </div>
 
-      <Headphones size={36} />
+      <Headphones size={38} color="#f7d28b" />
     </div>
 
-    <div style={styles.subCard}>
-      <h3>Customer Support</h3>
+    {/* SUPPORT CONTACT CARDS */}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        gap: "16px",
+        marginTop: "20px",
+      }}
+    >
+      {/* PHONE */}
+      <div style={styles.subCard}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            marginBottom: "12px",
+          }}
+        >
+          <Phone size={28} color="#f7d28b" />
 
-      <p>
-        Raise a support request for transaction issues,
-        account problems, loans, fund transfers, login issues,
-        or other banking related queries.
+          <div>
+            <h3 style={{ margin: 0, color: "#f7d28b" }}>
+              24×7 Phone Banking
+            </h3>
+
+            <small style={{ color: "#94a3b8" }}>
+              Customer Care Helpline
+            </small>
+          </div>
+        </div>
+
+        <h2 style={{ color: "#ffffff" }}>
+          +91 1800-000-0000
+        </h2>
+
+        <p style={{ color: "#cbd5e1" }}>
+          Available 24 hours a day, 7 days a week.
+        </p>
+
+        <a
+          href="tel:+911800000000"
+          style={{
+            ...styles.primaryFullBtn,
+            textDecoration: "none",
+          }}
+        >
+          <Phone size={18} />
+          Call Customer Care
+        </a>
+      </div>
+
+      {/* EMAIL */}
+      <div style={styles.subCard}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            marginBottom: "12px",
+          }}
+        >
+          <Mail size={28} color="#f7d28b" />
+
+          <div>
+            <h3 style={{ margin: 0, color: "#f7d28b" }}>
+              Email Support
+            </h3>
+
+            <small style={{ color: "#94a3b8" }}>
+              General Banking Assistance
+            </small>
+          </div>
+        </div>
+
+        <h3 style={{ color: "#ffffff" }}>
+          support@finsecure.example
+        </h3>
+
+        <p style={{ color: "#cbd5e1" }}>
+          Send detailed queries related to your banking services.
+        </p>
+
+        <a
+          href="mailto:support@finsecure.example"
+          style={{
+            ...styles.primaryFullBtn,
+            textDecoration: "none",
+          }}
+        >
+          <Mail size={18} />
+          Email Support
+        </a>
+      </div>
+
+      {/* FRAUD */}
+      <div style={styles.subCard}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            marginBottom: "12px",
+          }}
+        >
+          <ShieldCheck size={28} color="#f87171" />
+
+          <div>
+            <h3 style={{ margin: 0, color: "#fca5a5" }}>
+              Fraud & Security
+            </h3>
+
+            <small style={{ color: "#94a3b8" }}>
+              Emergency Assistance
+            </small>
+          </div>
+        </div>
+
+        <h2 style={{ color: "#ffffff" }}>
+          Report Immediately
+        </h2>
+
+        <p style={{ color: "#cbd5e1" }}>
+          Unauthorized transaction, suspicious activity, account compromise
+          or security concerns.
+        </p>
+
+        <button
+          style={{
+            ...styles.primaryFullBtn,
+            border: "1px solid #ef4444",
+            color: "#fecaca",
+          }}
+          onClick={() =>
+            showToast("Emergency support request selected")
+          }
+        >
+          <ShieldCheck size={18} />
+          Report Fraud
+        </button>
+      </div>
+    </div>
+
+    {/* CUSTOMER SUPPORT PROFILE */}
+    <div style={styles.subCard}>
+      <div style={styles.cardHeader}>
+        <div>
+          <h2 style={{ color: "#f7d28b", marginBottom: "5px" }}>
+            Your Support Profile
+          </h2>
+
+          <p style={{ color: "#94a3b8", margin: 0 }}>
+            These details help our support team identify your account.
+          </p>
+        </div>
+
+        <UserRound size={30} color="#f7d28b" />
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "14px",
+          marginTop: "18px",
+        }}
+      >
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              Customer Name
+            </small>
+
+            <h3>{userName}</h3>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              Customer ID
+            </small>
+
+            <h3>{customerId}</h3>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              Registered Mobile
+            </small>
+
+            <h3>{customerPhone}</h3>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              Registered Email
+            </small>
+
+            <h3>{userEmail}</h3>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              Account Number
+            </small>
+
+            <h3>
+              {maskAccountNumber(customerAccountNumber)}
+            </h3>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              Account Type
+            </small>
+
+            <h3>{customerAccountType}</h3>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              Branch
+            </small>
+
+            <h3>{customerBranch}</h3>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              IFSC Code
+            </small>
+
+            <h3>{customerIFSC}</h3>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              CIF Number
+            </small>
+
+            <h3>{customerCIF}</h3>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              KYC Status
+            </small>
+
+            <h3>{customerKYC}</h3>
+          </div>
+
+          <span style={styles.activeBadge}>
+            {customerKYC}
+          </span>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              Account Status
+            </small>
+
+            <h3>{customerStatus}</h3>
+          </div>
+
+          <span style={styles.activeBadge}>
+            {customerStatus}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    {/* QUICK SUPPORT */}
+    <div style={styles.subCard}>
+      <h2 style={{ color: "#f7d28b" }}>
+        Quick Banking Assistance
+      </h2>
+
+      <p style={{ color: "#94a3b8" }}>
+        Select the banking service you need help with.
       </p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "14px",
+          marginTop: "18px",
+        }}
+      >
+        {[
+          "Account & KYC",
+          "Fund Transfer",
+          "Transaction Dispute",
+          "Loan Assistance",
+          "Investment Support",
+          "Login & Security",
+          "Statement Request",
+          "Card / Banking Services",
+        ].map((item) => (
+          <button
+            key={item}
+            style={styles.goldBtn}
+            onClick={() =>
+              showToast(`${item} support selected`)
+            }
+          >
+            <Headphones size={17} />
+            {item}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    {/* SERVICE REQUEST */}
+    <div style={styles.subCard}>
+      <div style={styles.cardHeader}>
+        <div>
+          <h2 style={{ color: "#f7d28b", marginBottom: "5px" }}>
+            Raise a Service Request
+          </h2>
+
+          <p style={{ color: "#94a3b8", margin: 0 }}>
+            Create and track complaints or banking service requests.
+          </p>
+        </div>
+
+        <Headphones size={30} color="#f7d28b" />
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "14px",
+          marginTop: "20px",
+        }}
+      >
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              General Query
+            </small>
+
+            <h3>Banking Assistance</h3>
+
+            <p style={{ color: "#cbd5e1" }}>
+              Accounts, statements and general services.
+            </p>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              Transaction Complaint
+            </small>
+
+            <h3>Payment Dispute</h3>
+
+            <p style={{ color: "#cbd5e1" }}>
+              Failed, pending or unauthorized transactions.
+            </p>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              Loan Support
+            </small>
+
+            <h3>Loan Assistance</h3>
+
+            <p style={{ color: "#cbd5e1" }}>
+              Application, repayment and loan status queries.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <button
+        style={{
+          ...styles.primaryFullBtn,
+          marginTop: "18px",
+        }}
+        onClick={() =>
+          showToast("Support ticket module will open here")
+        }
+      >
+        <Headphones size={19} />
+        Create New Support Ticket
+      </button>
+    </div>
+
+    {/* ESCALATION */}
+    <div style={styles.subCard}>
+      <h2 style={{ color: "#f7d28b" }}>
+        Complaint Escalation
+      </h2>
+
+      <p style={{ color: "#94a3b8" }}>
+        Unresolved requests can be escalated through the support hierarchy.
+      </p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "14px",
+          marginTop: "16px",
+        }}
+      >
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              LEVEL 1
+            </small>
+
+            <h3>Customer Care</h3>
+
+            <p>General complaints and service requests.</p>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              LEVEL 2
+            </small>
+
+            <h3>Grievance Desk</h3>
+
+            <p>Escalation for unresolved complaints.</p>
+          </div>
+        </div>
+
+        <div style={styles.historyItem}>
+          <div>
+            <small style={{ color: "#94a3b8" }}>
+              LEVEL 3
+            </small>
+
+            <h3>Nodal Support Officer</h3>
+
+            <p>Final internal escalation for complex cases.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* SECURITY NOTICE */}
+    <div style={styles.securityNote}>
+      <div
+        style={{
+          display: "flex",
+          gap: "12px",
+          alignItems: "flex-start",
+        }}
+      >
+        <ShieldCheck size={25} />
+
+        <div>
+          <strong>FinSecure Security Notice</strong>
+
+          <p style={{ marginBottom: 0 }}>
+            Never share your password, OTP, PIN, CVV or complete card
+            information with anyone. FinSecure support representatives
+            should never request confidential banking credentials.
+          </p>
+        </div>
+      </div>
     </div>
   </div>
 )}

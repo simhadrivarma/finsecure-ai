@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -110,7 +110,7 @@ const cleanMoney = (value: any) => {
   if (value === undefined || value === null || value === "") return 0;
  
   const numberValue = Number(
-    String(value).replace(/â‚¹/g, "").replace(/,/g, "").trim()
+    String(value).replace(/₹/g, "").replace(/,/g, "").trim()
   );
  
   return Number.isNaN(numberValue) ? 0 : numberValue;
@@ -511,7 +511,7 @@ const applyTransactionToCustomerBalance = async (transaction: any) => {
 ================================ */
  
 app.get("/", (req: any, res: any) => {
-  res.send("FinSecure AI Backend Running ðŸš€");
+  res.send("FinSecure AI Backend Running 🚀");
 });
  
 app.get("/api/health", async (req: any, res: any) => {
@@ -816,6 +816,250 @@ app.get("/api/customer/profile", async (req: any, res: any) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to load customer profile",
+    });
+  }
+});
+
+/* ===============================
+   CUSTOMER CARE / SUPPORT TICKETS
+================================ */
+
+app.get("/api/support-tickets", async (req: any, res: any) => {
+  try {
+    const jwt = require("jsonwebtoken");
+
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    let decoded: any;
+
+    try {
+      decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || "finsecure_ai_secret_key"
+      );
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired login session",
+      });
+    }
+
+    const customerEmail = String(decoded.email || "")
+      .toLowerCase()
+      .trim();
+
+    if (!customerEmail) {
+      return res.status(401).json({
+        success: false,
+        message: "Customer email not found in login session",
+      });
+    }
+
+    const collection = await getCollection("supporttickets");
+
+    const tickets = await collection
+      .find({
+        customerEmail,
+      })
+      .sort({
+        createdAt: -1,
+      })
+      .toArray();
+
+    return res.status(200).json({
+      success: true,
+      count: tickets.length,
+      data: tickets.map(formatRecord),
+    });
+  } catch (error: any) {
+    console.error("Support ticket GET failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to load support tickets",
+    });
+  }
+});
+
+
+app.post("/api/support-tickets", async (req: any, res: any) => {
+  try {
+    const jwt = require("jsonwebtoken");
+
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    let decoded: any;
+
+    try {
+      decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || "finsecure_ai_secret_key"
+      );
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired login session",
+      });
+    }
+
+    const customerEmail = String(decoded.email || "")
+      .toLowerCase()
+      .trim();
+
+    if (!customerEmail) {
+      return res.status(401).json({
+        success: false,
+        message: "Customer email not found in login session",
+      });
+    }
+
+    const {
+      category,
+      subject,
+      description,
+      priority,
+    } = req.body;
+
+    if (!category) {
+      return res.status(400).json({
+        success: false,
+        message: "Issue type is required",
+      });
+    }
+
+    if (!subject || !String(subject).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Subject is required",
+      });
+    }
+
+    if (!description || !String(description).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Issue description is required",
+      });
+    }
+
+    const customersCollection = await getCollection("customers");
+
+    const customer = await customersCollection.findOne({
+      email: customerEmail,
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer profile not found",
+      });
+    }
+
+    const supportCollection = await getCollection("supporttickets");
+
+    const ticketId = `FSC-TKT-${Date.now()
+      .toString()
+      .slice(-8)}`;
+
+    const now = new Date();
+
+    const ticket = {
+      id: ticketId,
+      ticketId,
+
+      customerId:
+        customer.id ||
+        String(customer._id || ""),
+
+      customerName:
+        customer.name ||
+        customer.customerName ||
+        "Customer",
+
+      customerEmail,
+
+      phone:
+        customer.phone ||
+        customer.phoneNumber ||
+        "",
+
+      accountNumber:
+        customer.accountNumber || "",
+
+      accountType:
+        customer.accountType || "",
+
+      branch:
+        customer.branch || "",
+
+      ifsc:
+        customer.ifsc ||
+        customer.ifscCode ||
+        "",
+
+      category: String(category).trim(),
+
+      subject: String(subject).trim(),
+
+      description: String(description).trim(),
+
+      priority:
+        priority || "Medium",
+
+      status: "Open",
+
+      assignedTo: "",
+
+      assignedEmployeeId: "",
+
+      adminReply: "",
+
+      resolution: "",
+
+      escalationLevel: 1,
+
+      replies: [],
+
+      createdAt: now,
+
+      updatedAt: now,
+
+      resolvedAt: null,
+    };
+
+    const result = await supportCollection.insertOne(ticket);
+
+    return res.status(201).json({
+      success: true,
+      message: "Support ticket created successfully",
+      data: formatRecord({
+        ...ticket,
+        _id: result.insertedId,
+      }),
+    });
+  } catch (error: any) {
+    console.error("Support ticket POST failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to create support ticket",
     });
   }
 });
@@ -1286,10 +1530,10 @@ app.get("/api/dashboard", async (req: any, res: any) => {
         totalReports: reports.length,
         totalAuditLogs: auditLogs.length,
  
-        totalBalance: `â‚¹${totalBalance.toLocaleString("en-IN")}`,
-        branchBalance: `â‚¹${totalBalance.toLocaleString("en-IN")}`,
-        totalLoanAmount: `â‚¹${totalLoanAmount.toLocaleString("en-IN")}`,
-        transactionVolume: `â‚¹${transactionVolume.toLocaleString("en-IN")}`,
+        totalBalance: `₹${totalBalance.toLocaleString("en-IN")}`,
+        branchBalance: `₹${totalBalance.toLocaleString("en-IN")}`,
+        totalLoanAmount: `₹${totalLoanAmount.toLocaleString("en-IN")}`,
+        transactionVolume: `₹${transactionVolume.toLocaleString("en-IN")}`,
  
         aiRiskAlerts: transactions.filter((t: any) =>
           ["High", "Medium", "Flagged"].includes(t.risk || t.status)
@@ -1440,8 +1684,8 @@ if (!db) {
     };
  
     const formatMoney = (value: any) => {
-      const numberValue = Number(String(value || 0).replace(/â‚¹|,/g, ""));
-      return `â‚¹${Number.isNaN(numberValue) ? 0 : numberValue.toLocaleString("en-IN")}`;
+      const numberValue = Number(String(value || 0).replace(/₹|,/g, ""));
+      return `₹${Number.isNaN(numberValue) ? 0 : numberValue.toLocaleString("en-IN")}`;
     };
  
     const formatRecord = (title: string, record: any) => {
@@ -1452,7 +1696,7 @@ if (!db) {
           .replace(/([A-Z])/g, " $1")
           .replace(/^./, (char) => char.toUpperCase());
  
-        return `â€¢ ${label}: ${value || "-"}`;
+        return `• ${label}: ${value || "-"}`;
       });
  
       return `${title}\n${lines.join("\n")}`;
@@ -1467,14 +1711,14 @@ if (!db) {
     const auditLogs = await getCollection(["auditlogs", "auditLogs", "audit_logs"]);
  
     const totalCustomerBalance = customers.reduce((sum: number, item: any) => {
-      return sum + Number(String(item.balance || 0).replace(/â‚¹|,/g, ""));
+      return sum + Number(String(item.balance || 0).replace(/₹|,/g, ""));
     }, 0);
  
     const totalLoanAmount = loans.reduce((sum: number, item: any) => {
       return (
         sum +
         Number(
-          String(item.loanAmount || item.amount || item.totalLoans || 0).replace(/â‚¹|,/g, "")
+          String(item.loanAmount || item.amount || item.totalLoans || 0).replace(/₹|,/g, "")
         )
       );
     }, 0);
@@ -1539,15 +1783,15 @@ if (!db) {
     ) {
       answer = [
         "FinSecure Bank Summary",
-        `â€¢ Total Customers: ${customers.length}`,
-        `â€¢ Total Employees: ${employees.length}`,
-        `â€¢ Total Admins: ${admins.length}`,
-        `â€¢ Total Branches: ${branches.length}`,
-        `â€¢ Total Loans: ${loans.length}`,
-        `â€¢ Total Transactions: ${transactions.length}`,
-        `â€¢ Total Audit Logs: ${auditLogs.length}`,
-        `â€¢ Total Customer Balance: ${formatMoney(totalCustomerBalance)}`,
-        `â€¢ Total Loan Amount: ${formatMoney(totalLoanAmount)}`,
+        `• Total Customers: ${customers.length}`,
+        `• Total Employees: ${employees.length}`,
+        `• Total Admins: ${admins.length}`,
+        `• Total Branches: ${branches.length}`,
+        `• Total Loans: ${loans.length}`,
+        `• Total Transactions: ${transactions.length}`,
+        `• Total Audit Logs: ${auditLogs.length}`,
+        `• Total Customer Balance: ${formatMoney(totalCustomerBalance)}`,
+        `• Total Loan Amount: ${formatMoney(totalLoanAmount)}`,
       ].join("\n");
     } else {
       const findCustomer = customers.find((customer: any) => {
@@ -1609,16 +1853,16 @@ if (!db) {
       } else {
         answer = [
           "I can answer questions like:",
-          "â€¢ Total customers",
-          "â€¢ Employees count",
-          "â€¢ Total branches",
-          "â€¢ Total loans",
-          "â€¢ Total transactions",
-          "â€¢ Total balance",
-          "â€¢ Complete bank summary",
-          "â€¢ Show customer Teja details",
-          "â€¢ Show employee Sri details",
-          "â€¢ Show branch Gajuwaka details",
+          "• Total customers",
+          "• Employees count",
+          "• Total branches",
+          "• Total loans",
+          "• Total transactions",
+          "• Total balance",
+          "• Complete bank summary",
+          "• Show customer Teja details",
+          "• Show employee Sri details",
+          "• Show branch Gajuwaka details",
         ].join("\n");
       }
     }
