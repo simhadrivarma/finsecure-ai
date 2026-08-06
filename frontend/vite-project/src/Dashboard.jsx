@@ -1,6 +1,7 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AIChatBox from "./components/AIChatBox";
 import { QRCodeSVG } from "qrcode.react";
+
 import {
   LayoutDashboard,
   Landmark,
@@ -42,7 +43,7 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.DEV
     ? "http://127.0.0.1:5000"
-    : "https://finsecure-ai-backend.vercel.app")
+    : "https://finsecure-ai-backend-09.onrender.com")
 ).replace(/\/$/, "");
 
 const API = API_BASE_URL.endsWith("/api")
@@ -287,6 +288,17 @@ function Dashboard() {
   const customerStatus = customer.status || "Active";
   const customerPan = customer.panNumber || "N/A";
   const customerAadhaar = customer.aadhaarNumber || "N/A";
+
+  const customerQrToken = String(
+    customer.qrToken ||
+      customer.qrCodeToken ||
+      customerAccountNumber ||
+      (customerId && customerId !== "N/A" ? customerId : "") ||
+      userEmail ||
+      "finsecure-customer"
+  );
+
+  const customerQrValue = `FINSECURE-CUSTOMER:${customerQrToken}`;
 
   const [authForm, setAuthForm] = useState({
     name: "",
@@ -1660,15 +1672,16 @@ function Dashboard() {
   }
 
   const navItems = [
-    ["dashboard", LayoutDashboard, "Dashboard"],
-    ["branches", Landmark, "Branches"],
-    ["accounts", WalletCards, "My Accounts"],
-    ["investments", TrendingUp, "Investments"],
-    ["transfer", Send, "Fund Transfer"],
-    ["statements", FileText, "Statements"],
-    ["loan", BadgeIndianRupee, "Apply for Loan"],
-    ["settings", Settings, "Settings"],
-  ];
+  ["dashboard", LayoutDashboard, "Dashboard"],
+  ["branches", Landmark, "Branches"],
+  ["accounts", WalletCards, "My Accounts"],
+  ["investments", TrendingUp, "Investments"],
+  ["transfer", Send, "Fund Transfer"],
+  ["statements", FileText, "Statements"],
+  ["loan", BadgeIndianRupee, "Apply for Loan"],
+  ["customer-care", Headphones, "Customer Care"],
+  ["settings", Settings, "Settings"],
+];
 
   return (
     <div style={styles.page}>
@@ -1693,7 +1706,7 @@ function Dashboard() {
           </div>
         </div>
 
-        <div style={styles.ornament}>◇────◇</div>
+        <div style={styles.ornament}>FINSECURE</div>
 
         <nav style={styles.nav}>
           {navItems.map(([key, Icon, label]) => (
@@ -1769,11 +1782,11 @@ function Dashboard() {
               {showNotifications && (
                 <div style={styles.dropdownBox}>
                   <h3>Notifications</h3>
-                  <p>âœ… Welcome back, {userName}</p>
-                  <p>ðŸ” Your account is secure</p>
-                  <p>ðŸ’° Balance: {formatMoney(dashboard.balance)}</p>
-                  <p>ðŸ“Š Transactions: {transactions.length}</p>
-                  <p>ðŸ’Ž Investments: {currentInvestments.length}</p>
+                  <p>✅ Welcome back, {userName}</p>
+                  <p>🔐 Your account is secure</p>
+                  <p>💰 Balance: {formatMoney(dashboard.balance)}</p>
+                  <p>📊 Transactions: {transactions.length}</p>
+                  <p>💎 Investments: {currentInvestments.length}</p>
                 </div>
               )}
             </div>
@@ -1815,7 +1828,7 @@ function Dashboard() {
                 <SummaryCard
                   title="Total Income"
                   value={formatMoney(dashboard.totalIncome)}
-                  trend="â–² This Month"
+                  trend="This Month"
                   icon={BarChart3}
                   variant="green"
                 />
@@ -1823,7 +1836,7 @@ function Dashboard() {
                 <SummaryCard
                   title="Total Expense"
                   value={formatMoney(dashboard.totalExpense)}
-                  trend="â–¼ This Month"
+                  trend="This Month"
                   icon={PieChart}
                   variant="red"
                 />
@@ -2068,7 +2081,7 @@ function Dashboard() {
                       <span>--</span>
                     </div>
 
-                    <p>Add branches from Admin Portal â†’ Branches.</p>
+                    <p>Add branches from Admin Portal → Branches.</p>
                   </div>
                 ) : (
                   branches.map((branch) => (
@@ -2613,6 +2626,33 @@ function Dashboard() {
             </div>
           )}
 
+          {selectedPage === "customer-care" && (
+  <div style={styles.card}>
+    <div style={styles.cardHeader}>
+      <div>
+        <h2 style={styles.cardTitle}>Customer Care</h2>
+
+        <p style={styles.desc}>
+          Welcome to FinSecure Customer Support.
+          How can we help you today?
+        </p>
+      </div>
+
+      <Headphones size={36} />
+    </div>
+
+    <div style={styles.subCard}>
+      <h3>Customer Support</h3>
+
+      <p>
+        Raise a support request for transaction issues,
+        account problems, loans, fund transfers, login issues,
+        or other banking related queries.
+      </p>
+    </div>
+  </div>
+)}
+
           {selectedPage === "settings" && (
             <div style={styles.card}>
               <h2 style={styles.cardTitle}>Settings</h2>
@@ -2780,8 +2820,14 @@ function Dashboard() {
         </footer>
 
         {showAccountDetails && (
-          <div style={styles.modalOverlay}>
-            <div style={styles.modalBox}>
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setShowAccountDetails(false)}
+          >
+            <div
+              style={styles.modalBox}
+              onClick={(event) => event.stopPropagation()}
+            >
               <h2 style={styles.cardTitle}>Account Details</h2>
 
               <p>
@@ -2836,85 +2882,42 @@ function Dashboard() {
                 <strong>Balance:</strong> {formatMoney(dashboard.balance)}
               </p>
               <p>
-  <strong>Investments:</strong>{" "}
-  {formatMoney(totalInvestmentValue)}
-</p>
+                <strong>Investments:</strong>{" "}
+                {formatMoney(totalInvestmentValue)}
+              </p>
 
-<div
-  style={{
-    marginTop: "22px",
-    marginBottom: "22px",
-    padding: "20px",
-    border: "1px solid rgba(212, 175, 55, 0.65)",
-    borderRadius: "16px",
-    background: "rgba(255, 255, 255, 0.04)",
-    textAlign: "center",
-  }}
->
-  <h3
-    style={{
-      marginTop: 0,
-      marginBottom: "8px",
-      color: "#f4d06f",
-    }}
-  >
-    My Unique Customer QR
-  </h3>
+              <div style={styles.customerQrSection}>
+                <h3 style={styles.customerQrTitle}>My Unique Customer QR</h3>
 
-  <p
-    style={{
-      marginTop: 0,
-      marginBottom: "16px",
-      fontSize: "13px",
-      color: "#cbd5e1",
-    }}
-  >
-    Scan this QR code to identify your FinSecure account.
-  </p>
+                <div style={styles.customerQrBox}>
+                  <QRCodeSVG
+                    value={customerQrValue}
+                    size={190}
+                    level="M"
+                    bgColor="#ffffff"
+                    fgColor="#061126"
+                    marginSize={2}
+                    title={`${userName} FinSecure customer QR`}
+                  />
+                </div>
 
-  {customerQrValue ? (
-    <div
-      style={{
-        display: "inline-flex",
-        padding: "14px",
-        background: "#ffffff",
-        borderRadius: "12px",
-      }}
-    >
-      <QRCodeSVG
-        value={customerQrValue}
-        size={190}
-        level="H"
-        marginSize={2}
-        bgColor="#ffffff"
-        fgColor="#061126"
-        title={`${userName} FinSecure customer QR`}
-      />
-    </div>
-  ) : (
-    <p style={{ color: "#fca5a5" }}>
-      QR code is not available for this account.
-    </p>
-  )}
+                <p style={styles.customerQrHelp}>
+                  This QR contains only your unique FinSecure customer token.
+                  It does not contain your password, Aadhaar number, PAN number,
+                  full account number, or login token.
+                </p>
 
-  <p
-    style={{
-      marginTop: "14px",
-      marginBottom: 0,
-      fontSize: "12px",
-      color: "#94a3b8",
-    }}
-  >
-    Account: {maskAccountNumber(customerAccountNumber)}
-  </p>
-</div>
+                <p style={styles.customerQrId}>
+                  QR ID: {customerQrToken}
+                </p>
+              </div>
 
-<button
-  style={styles.goldBtn}
-  onClick={() => setShowAccountDetails(false)}
->
-  Close
-</button>
+              <button
+                style={styles.goldBtn}
+                onClick={() => setShowAccountDetails(false)}
+              >
+                Close
+              </button>
             </div>
           </div>
         )}
@@ -3031,7 +3034,6 @@ function SummaryCard({ title, value, trend, icon: Icon, variant }) {
         <small style={styles.smallGold}>{trend}</small>
       </div>
 
-      <span style={styles.dots}>â‹®</span>
     </div>
   );
 }
@@ -4548,11 +4550,11 @@ backgroundAttachment: "fixed",
   modalOverlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.65)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    background: "rgba(0, 0, 0, 0.78)",
+    display: "block",
+    padding: "24px 16px",
     zIndex: 99999,
+    overflowY: "auto",
   },
 
   customerQrSection: {
@@ -4593,31 +4595,19 @@ backgroundAttachment: "fixed",
     overflowWrap: "anywhere",
   },
 
-  modalOverlay: {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.72)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "20px",
-  zIndex: 99999,
-  overflowY: "auto",
-},
-
-modalBox: {
-  width: "520px",
-  maxWidth: "90vw",
-  maxHeight: "85vh",
-  overflowY: "auto",
-  background:
-    "linear-gradient(145deg, rgba(4,15,34,0.98), rgba(2,8,23,0.98))",
-  border: "1px solid rgba(212,175,55,0.65)",
-  borderRadius: "18px",
-  padding: "26px",
-  color: "#f8fafc",
-  boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
-},
+  modalBox: {
+    position: "relative",
+    width: "520px",
+    maxWidth: "calc(100vw - 32px)",
+    margin: "20px auto 40px",
+    background:
+      "linear-gradient(145deg, rgba(4,15,34,0.99), rgba(2,8,23,0.99))",
+    border: "1px solid rgba(212,175,55,0.65)",
+    borderRadius: "18px",
+    padding: "26px",
+    color: "#f8fafc",
+    boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+  },
 
   emptyText: {
     color: "#e5e7eb",
@@ -4639,4 +4629,3 @@ modalBox: {
 };
 
 export default Dashboard;
-
