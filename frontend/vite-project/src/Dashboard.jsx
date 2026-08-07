@@ -2,11 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import AIChatBox from "./components/AIChatBox";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  // other icons...
-  Headphones,
-  Settings,
-} from "lucide-react";
-import {
   LayoutDashboard,
   Landmark,
   WalletCards,
@@ -221,7 +216,6 @@ const normalizeArrayResponse = (result) => {
   return [];
 };
 
-
 function Dashboard() {
   const [isLogin, setIsLogin] = useState(true);
   const [token, setToken] = useState(() => {
@@ -372,6 +366,17 @@ function Dashboard() {
     safeJSON("loanApplications", [])
   );
 
+  const [showSupportForm, setShowSupportForm] = useState(false);
+
+const [supportForm, setSupportForm] = useState({
+  category: "Transaction Issue",
+  subject: "",
+  description: "",
+  priority: "Medium",
+});
+
+const [supportTickets, setSupportTickets] = useState([]);
+
   const [investmentForm, setInvestmentForm] = useState({
     investmentType: "Fixed Deposit",
     amount: "",
@@ -426,6 +431,74 @@ function Dashboard() {
   const handleLoanChange = (e) => {
     setLoanForm({ ...loanForm, [e.target.name]: e.target.value });
   };
+
+  const handleSupportChange = (e) => {
+  const { name, value } = e.target;
+
+  setSupportForm((prev) => ({
+    ...prev,
+    [name]: value,
+  }));
+};
+
+const submitSupportTicket = async (e) => {
+  e.preventDefault();
+
+  if (!supportForm.subject.trim()) {
+    alert("Please enter the issue subject");
+    return;
+  }
+
+  if (!supportForm.description.trim()) {
+    alert("Please describe your issue");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/support-tickets`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        category: supportForm.category,
+        subject: supportForm.subject.trim(),
+        description: supportForm.description.trim(),
+        priority: supportForm.priority,
+      }),
+    });
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(
+        result.message || "Unable to create support ticket"
+      );
+    }
+
+    setSupportForm({
+      category: "Transaction Issue",
+      subject: "",
+      description: "",
+      priority: "Medium",
+    });
+
+    setShowSupportForm(false);
+
+    showToast(
+      `Ticket ${
+        result?.data?.ticketId || ""
+      } created successfully`
+    );
+
+    await loadSupportTickets();
+  } catch (error) {
+    console.error("Support ticket submission failed:", error);
+
+    alert(
+      error.message ||
+        "Unable to submit support ticket"
+    );
+  }
+};
 
   const handleInvestmentChange = (e) => {
     setInvestmentForm({ ...investmentForm, [e.target.name]: e.target.value });
@@ -1031,21 +1104,35 @@ function Dashboard() {
   }
 };
 
-  const loadLoanApplications = async () => {
+const loadLoanApplications = async () => {
   try {
     const res = await fetch(`${API}/loans`, {
       headers: getAuthHeaders(),
     });
 
-    const result = await res.json();
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(
+        result.message || "Unable to load loan applications"
+      );
+    }
+
     const allLoans = normalizeArrayResponse(result);
 
     const myLoans = allLoans.filter((loan) => {
       const loanEmail =
-        loan.userEmail || loan.email || loan.customerEmail || loan.applicantEmail;
+        loan.userEmail ||
+        loan.email ||
+        loan.customerEmail ||
+        loan.applicantEmail ||
+        "";
 
       const loanCustomerId =
-        loan.customerId || loan.customerID || loan.customer_id || "";
+        loan.customerId ||
+        loan.customerID ||
+        loan.customer_id ||
+        "";
 
       return (
         cleanText(loanEmail) === cleanText(userEmail) ||
@@ -1053,10 +1140,42 @@ function Dashboard() {
       );
     });
 
-    setLoanApplications(myLoans.length ? myLoans : allLoans);
+    setLoanApplications(
+      myLoans.length ? myLoans : allLoans
+    );
   } catch (err) {
     console.error("Failed to load loans:", err);
-    setLoanApplications(safeJSON("loanApplications", []));
+
+    setLoanApplications(
+      safeJSON("loanApplications", [])
+    );
+  }
+};
+
+  const loadSupportTickets = async () => {
+  try {
+    const res = await fetch(`${API}/support-tickets`, {
+      headers: getAuthHeaders(),
+    });
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(
+        result.message || "Unable to load support tickets"
+      );
+    }
+
+    const tickets = Array.isArray(result)
+      ? result
+      : Array.isArray(result?.data)
+      ? result.data
+      : [];
+
+    setSupportTickets(tickets);
+  } catch (error) {
+    console.error("Failed to load support tickets:", error);
+    setSupportTickets([]);
   }
 };
 
@@ -1420,10 +1539,11 @@ function Dashboard() {
       loadBranches();
 
       const loadCustomerData = async () => {
-        await loadProfile();
-        await loadTransactions();
-        await loadLoanApplications();
-      };
+  await loadProfile();
+  await loadTransactions();
+  await loadLoanApplications();
+  await loadSupportTickets();
+};
 
       loadCustomerData();
     }
@@ -2631,512 +2751,410 @@ function Dashboard() {
           )}
 
           {selectedPage === "customer-care" && (
-  <div style={styles.card}>
-    {/* HEADER */}
-    <div style={styles.cardHeader}>
-      <div>
-        <h2 style={styles.cardTitle}>FinSecure Customer Care</h2>
-
-        <p style={styles.desc}>
-          Secure banking assistance, service requests and emergency support.
-        </p>
-      </div>
-
-      <Headphones size={38} color="#f7d28b" />
-    </div>
-
-    {/* SUPPORT CONTACT CARDS */}
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-        gap: "16px",
-        marginTop: "20px",
-      }}
-    >
-      {/* PHONE */}
-      <div style={styles.subCard}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            marginBottom: "12px",
-          }}
-        >
-          <Phone size={28} color="#f7d28b" />
-
-          <div>
-            <h3 style={{ margin: 0, color: "#f7d28b" }}>
-              24×7 Phone Banking
-            </h3>
-
-            <small style={{ color: "#94a3b8" }}>
-              Customer Care Helpline
-            </small>
-          </div>
-        </div>
-
-        <h2 style={{ color: "#ffffff" }}>
-          +91 1800-000-0000
-        </h2>
-
-        <p style={{ color: "#cbd5e1" }}>
-          Available 24 hours a day, 7 days a week.
-        </p>
-
-        <a
-          href="tel:+911800000000"
-          style={{
-            ...styles.primaryFullBtn,
-            textDecoration: "none",
-          }}
-        >
-          <Phone size={18} />
-          Call Customer Care
-        </a>
-      </div>
-
-      {/* EMAIL */}
-      <div style={styles.subCard}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            marginBottom: "12px",
-          }}
-        >
-          <Mail size={28} color="#f7d28b" />
-
-          <div>
-            <h3 style={{ margin: 0, color: "#f7d28b" }}>
-              Email Support
-            </h3>
-
-            <small style={{ color: "#94a3b8" }}>
-              General Banking Assistance
-            </small>
-          </div>
-        </div>
-
-        <h3 style={{ color: "#ffffff" }}>
-          support@finsecure.example
-        </h3>
-
-        <p style={{ color: "#cbd5e1" }}>
-          Send detailed queries related to your banking services.
-        </p>
-
-        <a
-          href="mailto:support@finsecure.example"
-          style={{
-            ...styles.primaryFullBtn,
-            textDecoration: "none",
-          }}
-        >
-          <Mail size={18} />
-          Email Support
-        </a>
-      </div>
-
-      {/* FRAUD */}
-      <div style={styles.subCard}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            marginBottom: "12px",
-          }}
-        >
-          <ShieldCheck size={28} color="#f87171" />
-
-          <div>
-            <h3 style={{ margin: 0, color: "#fca5a5" }}>
-              Fraud & Security
-            </h3>
-
-            <small style={{ color: "#94a3b8" }}>
-              Emergency Assistance
-            </small>
-          </div>
-        </div>
-
-        <h2 style={{ color: "#ffffff" }}>
-          Report Immediately
-        </h2>
-
-        <p style={{ color: "#cbd5e1" }}>
-          Unauthorized transaction, suspicious activity, account compromise
-          or security concerns.
-        </p>
-
-        <button
-          style={{
-            ...styles.primaryFullBtn,
-            border: "1px solid #ef4444",
-            color: "#fecaca",
-          }}
-          onClick={() =>
-            showToast("Emergency support request selected")
-          }
-        >
-          <ShieldCheck size={18} />
-          Report Fraud
-        </button>
-      </div>
-    </div>
-
-    {/* CUSTOMER SUPPORT PROFILE */}
-    <div style={styles.subCard}>
-      <div style={styles.cardHeader}>
-        <div>
-          <h2 style={{ color: "#f7d28b", marginBottom: "5px" }}>
-            Your Support Profile
-          </h2>
-
-          <p style={{ color: "#94a3b8", margin: 0 }}>
-            These details help our support team identify your account.
-          </p>
-        </div>
-
-        <UserRound size={30} color="#f7d28b" />
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "14px",
-          marginTop: "18px",
-        }}
-      >
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              Customer Name
-            </small>
-
-            <h3>{userName}</h3>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              Customer ID
-            </small>
-
-            <h3>{customerId}</h3>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              Registered Mobile
-            </small>
-
-            <h3>{customerPhone}</h3>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              Registered Email
-            </small>
-
-            <h3>{userEmail}</h3>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              Account Number
-            </small>
-
-            <h3>
-              {maskAccountNumber(customerAccountNumber)}
-            </h3>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              Account Type
-            </small>
-
-            <h3>{customerAccountType}</h3>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              Branch
-            </small>
-
-            <h3>{customerBranch}</h3>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              IFSC Code
-            </small>
-
-            <h3>{customerIFSC}</h3>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              CIF Number
-            </small>
-
-            <h3>{customerCIF}</h3>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              KYC Status
-            </small>
-
-            <h3>{customerKYC}</h3>
-          </div>
-
-          <span style={styles.activeBadge}>
-            {customerKYC}
-          </span>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              Account Status
-            </small>
-
-            <h3>{customerStatus}</h3>
-          </div>
-
-          <span style={styles.activeBadge}>
-            {customerStatus}
-          </span>
-        </div>
-      </div>
-    </div>
-
-    {/* QUICK SUPPORT */}
-    <div style={styles.subCard}>
-      <h2 style={{ color: "#f7d28b" }}>
-        Quick Banking Assistance
-      </h2>
-
-      <p style={{ color: "#94a3b8" }}>
-        Select the banking service you need help with.
-      </p>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "14px",
-          marginTop: "18px",
-        }}
-      >
-        {[
-          "Account & KYC",
-          "Fund Transfer",
-          "Transaction Dispute",
-          "Loan Assistance",
-          "Investment Support",
-          "Login & Security",
-          "Statement Request",
-          "Card / Banking Services",
-        ].map((item) => (
-          <button
-            key={item}
-            style={styles.goldBtn}
-            onClick={() =>
-              showToast(`${item} support selected`)
-            }
-          >
-            <Headphones size={17} />
-            {item}
-          </button>
-        ))}
-      </div>
-    </div>
-
-    {/* SERVICE REQUEST */}
-    <div style={styles.subCard}>
-      <div style={styles.cardHeader}>
-        <div>
-          <h2 style={{ color: "#f7d28b", marginBottom: "5px" }}>
-            Raise a Service Request
-          </h2>
-
-          <p style={{ color: "#94a3b8", margin: 0 }}>
-            Create and track complaints or banking service requests.
-          </p>
-        </div>
-
-        <Headphones size={30} color="#f7d28b" />
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: "14px",
-          marginTop: "20px",
-        }}
-      >
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              General Query
-            </small>
-
-            <h3>Banking Assistance</h3>
-
-            <p style={{ color: "#cbd5e1" }}>
-              Accounts, statements and general services.
-            </p>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              Transaction Complaint
-            </small>
-
-            <h3>Payment Dispute</h3>
-
-            <p style={{ color: "#cbd5e1" }}>
-              Failed, pending or unauthorized transactions.
-            </p>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              Loan Support
-            </small>
-
-            <h3>Loan Assistance</h3>
-
-            <p style={{ color: "#cbd5e1" }}>
-              Application, repayment and loan status queries.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <button
-        style={{
-          ...styles.primaryFullBtn,
-          marginTop: "18px",
-        }}
-        onClick={() =>
-          showToast("Support ticket module will open here")
-        }
-      >
-        <Headphones size={19} />
-        Create New Support Ticket
-      </button>
-    </div>
-
-    {/* ESCALATION */}
-    <div style={styles.subCard}>
-      <h2 style={{ color: "#f7d28b" }}>
-        Complaint Escalation
-      </h2>
-
-      <p style={{ color: "#94a3b8" }}>
-        Unresolved requests can be escalated through the support hierarchy.
-      </p>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "14px",
-          marginTop: "16px",
-        }}
-      >
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              LEVEL 1
-            </small>
-
-            <h3>Customer Care</h3>
-
-            <p>General complaints and service requests.</p>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              LEVEL 2
-            </small>
-
-            <h3>Grievance Desk</h3>
-
-            <p>Escalation for unresolved complaints.</p>
-          </div>
-        </div>
-
-        <div style={styles.historyItem}>
-          <div>
-            <small style={{ color: "#94a3b8" }}>
-              LEVEL 3
-            </small>
-
-            <h3>Nodal Support Officer</h3>
-
-            <p>Final internal escalation for complex cases.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    {/* SECURITY NOTICE */}
-    <div style={styles.securityNote}>
-      <div
-        style={{
-          display: "flex",
-          gap: "12px",
-          alignItems: "flex-start",
-        }}
-      >
-        <ShieldCheck size={25} />
-
-        <div>
-          <strong>FinSecure Security Notice</strong>
-
-          <p style={{ marginBottom: 0 }}>
-            Never share your password, OTP, PIN, CVV or complete card
-            information with anyone. FinSecure support representatives
-            should never request confidential banking credentials.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+            <div style={styles.card}>
+              {/* HEADER */}
+              <div style={styles.cardHeader}>
+                <div>
+                  <h2 style={styles.cardTitle}>FinSecure Customer Care</h2>
+                  <p style={styles.desc}>
+                    24/7 banking assistance, service requests, complaint tracking,
+                    and security support.
+                  </p>
+                </div>
+                <Headphones size={38} color="#f7d28b" />
+              </div>
+
+              {/* CONTACT OPTIONS */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+                  gap: "16px",
+                  marginTop: "20px",
+                }}
+              >
+                <div style={styles.subCard}>
+                  <Phone size={30} color="#f7d28b" />
+                  <h3 style={{ color: "#f7d28b" }}>24×7 Phone Banking</h3>
+                  <p style={{ color: "#94a3b8" }}>Customer Care Helpline</p>
+                  <h2 style={{ color: "#ffffff" }}>1800-123-4567</h2>
+                  <p style={{ color: "#cbd5e1" }}>
+                    Available 24 hours a day, 7 days a week.
+                  </p>
+                  <a
+                    href="tel:18001234567"
+                    style={{ ...styles.primaryFullBtn, textDecoration: "none" }}
+                  >
+                    <Phone size={18} /> Call Customer Care
+                  </a>
+                </div>
+
+                <div style={styles.subCard}>
+                  <Mail size={30} color="#f7d28b" />
+                  <h3 style={{ color: "#f7d28b" }}>Email Support</h3>
+                  <p style={{ color: "#94a3b8" }}>General Banking Assistance</p>
+                  <h3 style={{ color: "#ffffff" }}>support@finsecure.example</h3>
+                  <p style={{ color: "#cbd5e1" }}>
+                    Send detailed queries related to your banking services.
+                  </p>
+                  <a
+                    href="mailto:support@finsecure.example"
+                    style={{ ...styles.primaryFullBtn, textDecoration: "none" }}
+                  >
+                    <Mail size={18} /> Email Support
+                  </a>
+                </div>
+
+                <div style={styles.subCard}>
+                  <ShieldCheck size={30} color="#f87171" />
+                  <h3 style={{ color: "#fca5a5" }}>Fraud & Security</h3>
+                  <p style={{ color: "#94a3b8" }}>Emergency Assistance</p>
+                  <h3 style={{ color: "#ffffff" }}>Report Immediately</h3>
+                  <p style={{ color: "#cbd5e1" }}>
+                    Report unauthorized transactions, suspicious logins, or account
+                    security concerns.
+                  </p>
+                  <button
+                    type="button"
+                    style={{ ...styles.primaryFullBtn, border: "1px solid #ef4444" }}
+                    onClick={() => showToast("Emergency support request selected")}
+                  >
+                    <ShieldCheck size={18} /> Report Fraud
+                  </button>
+                </div>
+              </div>
+
+              {/* CUSTOMER SUPPORT PROFILE */}
+              <div style={styles.subCard}>
+                <div style={styles.cardHeader}>
+                  <div>
+                    <h2 style={{ color: "#f7d28b", marginBottom: "5px" }}>
+                      Your Support Profile
+                    </h2>
+                    <p style={{ color: "#94a3b8", margin: 0 }}>
+                      Your registered banking details for support verification.
+                    </p>
+                  </div>
+                  <UserRound size={30} color="#f7d28b" />
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "14px",
+                    marginTop: "18px",
+                  }}
+                >
+                  {[
+                    ["Customer Name", userName],
+                    ["Customer ID", customerId],
+                    ["Registered Mobile", customerPhone],
+                    ["Registered Email", userEmail],
+                    ["Account Number", maskAccountNumber(customerAccountNumber)],
+                    ["Account Type", customerAccountType],
+                    ["Branch", customerBranch],
+                    ["IFSC Code", customerIFSC],
+                    ["CIF Number", customerCIF],
+                  ].map(([label, value]) => (
+                    <div key={label} style={styles.historyItem}>
+                      <div>
+                        <small style={{ color: "#94a3b8" }}>{label}</small>
+                        <h3>{value || "N/A"}</h3>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div style={styles.historyItem}>
+                    <div>
+                      <small style={{ color: "#94a3b8" }}>KYC Status</small>
+                      <h3>{customerKYC}</h3>
+                    </div>
+                    <span style={styles.activeBadge}>{customerKYC}</span>
+                  </div>
+
+                  <div style={styles.historyItem}>
+                    <div>
+                      <small style={{ color: "#94a3b8" }}>Account Status</small>
+                      <h3>{customerStatus}</h3>
+                    </div>
+                    <span style={styles.activeBadge}>{customerStatus}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* QUICK BANKING ASSISTANCE */}
+              <div style={styles.subCard}>
+                <h2 style={{ color: "#f7d28b" }}>Quick Banking Assistance</h2>
+                <p style={{ color: "#94a3b8" }}>
+                  Select the service you need assistance with.
+                </p>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "14px",
+                    marginTop: "16px",
+                  }}
+                >
+                  {[
+                    "Account & KYC",
+                    "Fund Transfer",
+                    "Transaction Dispute",
+                    "Loan Assistance",
+                    "Investment Support",
+                    "Login & Security",
+                    "Statement Request",
+                    "Card / Banking Services",
+                  ].map((service) => (
+                    <button
+                      type="button"
+                      key={service}
+                      style={styles.goldBtn}
+                      onClick={() => showToast(`${service} support selected`)}
+                    >
+                      <Headphones size={17} /> {service}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* SERVICE REQUEST */}
+              <div style={styles.subCard}>
+                <div style={styles.cardHeader}>
+                  <div>
+                    <h2 style={{ color: "#f7d28b", marginBottom: "5px" }}>
+                      Raise a Service Request
+                    </h2>
+                    <p style={{ color: "#94a3b8", margin: 0 }}>
+                      Create and track complaints or banking service requests.
+                    </p>
+                  </div>
+                  <Headphones size={30} color="#f7d28b" />
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "14px",
+                    marginTop: "16px",
+                  }}
+                >
+                  {[
+                    ["General Query", "Banking Assistance", "Accounts, statements and general services."],
+                    ["Transaction Complaint", "Payment Dispute", "Failed, pending or unauthorized transactions."],
+                    ["Loan Support", "Loan Assistance", "Application, repayment and loan status queries."],
+                  ].map(([label, title, description]) => (
+                    <div key={label} style={styles.historyItem}>
+                      <div>
+                        <small style={{ color: "#94a3b8" }}>{label}</small>
+                        <h3>{title}</h3>
+                        <p style={{ color: "#cbd5e1" }}>{description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  style={{ ...styles.primaryFullBtn, marginTop: "18px" }}
+                  onClick={() => setShowSupportForm((prev) => !prev)}
+                >
+                  <Headphones size={19} />
+                  {showSupportForm ? "Close Support Ticket Form" : "Create New Support Ticket"}
+                </button>
+
+                {showSupportForm && (
+                  <form
+                    onSubmit={submitSupportTicket}
+                    style={{
+                      marginTop: "20px",
+                      padding: "20px",
+                      border: "1px solid rgba(212,175,55,0.45)",
+                      borderRadius: "14px",
+                      background: "rgba(2,8,23,0.6)",
+                    }}
+                  >
+                    <h3 style={{ color: "#f7d28b", marginTop: 0 }}>
+                      Create Support Ticket
+                    </h3>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+                        gap: "16px",
+                      }}
+                    >
+                      <div>
+                        <label style={styles.label}>Issue Type</label>
+                        <select
+                          name="category"
+                          value={supportForm.category}
+                          onChange={handleSupportChange}
+                          style={styles.input}
+                        >
+                          <option>Transaction Issue</option>
+                          <option>Fund Transfer Issue</option>
+                          <option>Account & KYC</option>
+                          <option>Loan Assistance</option>
+                          <option>Investment Support</option>
+                          <option>Statement Request</option>
+                          <option>Login & Security</option>
+                          <option>Fraud / Unauthorized Transaction</option>
+                          <option>Other</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={styles.label}>Priority</label>
+                        <select
+                          name="priority"
+                          value={supportForm.priority}
+                          onChange={handleSupportChange}
+                          style={styles.input}
+                        >
+                          <option>Low</option>
+                          <option>Medium</option>
+                          <option>High</option>
+                          <option>Urgent</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: "16px" }}>
+                      <label style={styles.label}>Subject</label>
+                      <input
+                        type="text"
+                        name="subject"
+                        value={supportForm.subject}
+                        onChange={handleSupportChange}
+                        placeholder="Example: Money deducted but receiver did not receive"
+                        style={styles.input}
+                      />
+                    </div>
+
+                    <div style={{ marginTop: "16px" }}>
+                      <label style={styles.label}>Describe Your Issue</label>
+                      <textarea
+                        name="description"
+                        value={supportForm.description}
+                        onChange={handleSupportChange}
+                        placeholder="Please provide complete information about your banking issue..."
+                        rows="5"
+                        style={styles.textArea}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      style={{ ...styles.primaryFullBtn, marginTop: "18px" }}
+                    >
+                      <Headphones size={19} /> Submit Support Ticket
+                    </button>
+
+                    <button
+                      type="button"
+                      style={{ ...styles.goldBtn, width: "100%", marginTop: "10px" }}
+                      onClick={() => setShowSupportForm(false)}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              {/* MY SUPPORT TICKETS */}
+              <div style={styles.subCard}>
+                <h2 style={{ color: "#f7d28b" }}>My Support Tickets</h2>
+                <p style={{ color: "#94a3b8" }}>
+                  Track your complaints and service requests.
+                </p>
+
+                {supportTickets.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "25px",
+                      textAlign: "center",
+                      border: "1px dashed #b79232",
+                      borderRadius: "10px",
+                      marginTop: "15px",
+                    }}
+                  >
+                    <Headphones size={32} color="#f7d28b" />
+                    <p>No support requests created yet.</p>
+                  </div>
+                ) : (
+                  supportTickets.map((ticket) => (
+                    <div key={ticket.ticketId} style={styles.historyItem}>
+                      <div>
+                        <h3 style={{ color: "#f7d28b", marginTop: 0 }}>
+                          {ticket.ticketId}
+                        </h3>
+                        <strong>{ticket.subject}</strong>
+                        <p>{ticket.category}</p>
+                        <small>
+                          Created: {new Date(ticket.createdAt).toLocaleString("en-IN")}
+                        </small>
+                      </div>
+
+                      <div style={{ textAlign: "right" }}>
+                        <span style={styles.pendingBadge}>{ticket.status}</span>
+                        <p style={{ marginBottom: 0 }}>Priority: {ticket.priority}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* ESCALATION */}
+              <div style={styles.subCard}>
+                <h2 style={{ color: "#f7d28b" }}>Complaint Escalation</h2>
+                <p style={{ color: "#94a3b8" }}>
+                  Unresolved requests can be escalated through the support hierarchy.
+                </p>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "14px",
+                    marginTop: "16px",
+                  }}
+                >
+                  {[
+                    ["LEVEL 1", "Customer Care", "General complaints and service requests."],
+                    ["LEVEL 2", "Grievance Desk", "Escalation for unresolved complaints."],
+                    ["LEVEL 3", "Nodal Support Officer", "Final internal escalation for complex cases."],
+                  ].map(([level, title, description]) => (
+                    <div key={level} style={styles.historyItem}>
+                      <div>
+                        <small style={{ color: "#94a3b8" }}>{level}</small>
+                        <h3>{title}</h3>
+                        <p>{description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* SECURITY NOTICE */}
+              <div style={styles.securityNote}>
+                <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                  <ShieldCheck size={25} />
+                  <div>
+                    <strong>FinSecure Security Notice</strong>
+                    <p style={{ marginBottom: 0 }}>
+                      Never share your password, OTP, PIN, CVV, internet banking
+                      credentials, or complete card information with anyone.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {selectedPage === "settings" && (
             <div style={styles.card}>
